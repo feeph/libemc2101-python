@@ -1,0 +1,14 @@
+#
+# usage:
+#   python3 -m venv .venv --prompt="`python3 --version|cut -d'.' -f1,2`"
+#   . .venv/bin/activate
+#   pip install --upgrade pip
+#   pip install -r requirements.txt
+
+# for Raspberry Pi and related devices
+# (not necessary when running CircuitPython natively)
+# https://pypi.org/project/adafruit-board-toolkit/
+adafruit-board-toolkit           ~= 1.1.0
+
+adafruit-circuitpython-busdevice ~= 5.2.0
+adafruit-circuitpython-emc2101   ~= 1.2.0

@@ -1,0 +1,18 @@
+---
+# this repository uses the pre-commit framework
+# documentation can be found at https://pre-commit.com/
+#
+# perform once after cloning the repository:
+#  pipx install pre-commit
+#  pre-commit install
+#
+# if you want to trigger pre-commit manually:
+#  pre-commit run
+#
+repos:
+-   repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v2.3.0
+    hooks:
+    -   id: check-yaml
+    -   id: end-of-file-fixer
+    -   id: trailing-whitespace
