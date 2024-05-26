@@ -63,6 +63,11 @@ class PinSixMode(Enum):
     TACHO = 2  # receive fan tacho signal
 
 
+class RpmControlMode(Enum):
+    DAC = 1  # use supply voltage to control fan speed (2 and 3 pin fans)
+    PWM = 2  # usi pulse width modulation to control fan speed (4 pin fans)
+
+
 def _convert_dutycycle_percentage2raw(value: int) -> int:
     """
     convert the provided value from percentage to the internal value
@@ -96,6 +101,7 @@ class Emc2101:
         self._duty_min = _convert_dutycycle_percentage2raw(fan_config.minimum_duty_cycle)
         self._duty_max = _convert_dutycycle_percentage2raw(fan_config.maximum_duty_cycle)
         self._pin_six = None  # will be initialize when needed
+        self._use_pwm = None  # will be initialize when needed
         self._rpm_min = fan_config.minimum_rpm
         self._rpm_max = fan_config.maximum_rpm
 
@@ -124,7 +130,32 @@ class Emc2101:
         cfg_register_value = self._i2c_device.read_register(0x03)
         self._i2c_device.write_register(0x03, cfg_register_value | 0b0000_0100)
 
-    def get_fan_speed(self) -> int | None:
+    def get_rpm_control_mode(self) -> RpmControlMode:
+        """
+        is fan speed controlled by DAC or PWM?
+        """
+        cfg_register_value = self._i2c_device.read_register(0x03)
+        if cfg_register_value & 0b0001_0000:
+            return RpmControlMode.DAC
+        else:
+            return RpmControlMode.PWM
+
+    def set_rpm_control_mode(self, mode: RpmControlMode):
+        """
+        choose between DAC or PWM to control fan speed
+        """
+        if mode == RpmControlMode.DAC:
+            LH.debug("Using supply voltage to control fan speed.")
+            cfg_register_value = self._i2c_device.read_register(0x03)
+            self._i2c_device.write_register(0x03, cfg_register_value | 0b0001_0000)
+        elif mode == RpmControlMode.PWM:
+            LH.debug("Using PWM signal to control fan speed.")
+            cfg_register_value = self._i2c_device.read_register(0x03)
+            self._i2c_device.write_register(0x03, cfg_register_value & 0b1110_1111)
+        else:
+            raise ValueError("Usage error. Please provide correct input value.")
+
+    def get_rpm(self) -> int | None:
         # initialize if needed
         if self._pin_six is None:
             if self._i2c_device.read_register(0x03) & 0b0000_0100:
@@ -147,14 +178,6 @@ class Emc2101:
         else:
             # unable to read a meaningful value
             return
-
-    def get_current_rpm(self) -> int:
-        # count = 0
-        # count |= self._i2c_device.read_register(0x46, 1)         # lower 8 bits
-        # count |= (self._i2c_device.read_register(0x47, 1) << 1)  # upper 8 bits
-        # count &= 0b1100000000000000                          # mask bits 14 & 15
-        # return int(5400000/count)
-        return int(self._emc2101.fan_speed)
 
     def get_minimum_rpm(self):
         count = 0

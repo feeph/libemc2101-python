@@ -28,6 +28,7 @@ if __name__ == '__main__':
     LH.debug("id: 0x%02x, revision: %i", emc2101.get_product_id(), emc2101.get_product_revision())
     # ---------------------------------------------------------------------
     emc2101.reset_device_registers()
+    emc2101.set_rpm_control_mode(mode=i2c.emc2101.RpmControlMode.PWM)
     emc2101.enable_tacho_pin()
     # ---------------------------------------------------------------------
     cfg_register = emc2101._i2c_device.read_register(0x03)
@@ -47,11 +48,11 @@ if __name__ == '__main__':
     LH.info("duty cycle:             %4i%% (min: %i%%, max: %i%%)", emc2101.get_dutycycle(), emc2101.get_minimum_dutycycle(), emc2101.get_maximum_dutycycle())
 
     while True:
-        rpm = emc2101.get_fan_speed()
+        rpm = emc2101.get_rpm()
         if rpm is not None:
-            LH.info("current fan speed:      %4iRPM", emc2101.get_fan_speed())
+            LH.info("current fan speed: %4iRPM", rpm)
         else:
-            LH.info("current fan speed:      <n/a>")
+            LH.info("current fan speed: <n/a>")
         time.sleep(2)
 
     # fan_config = emc2101.calibrate()
