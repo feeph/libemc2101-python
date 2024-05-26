@@ -38,7 +38,7 @@ class I2cDevice:
             self._i2c_bus.writeto_then_readfrom(address=self._i2c_adr, buffer_out=buf_r, buffer_in=buf_w)
             return buf_w[0]
         except RuntimeError as e:
-            logging.error("[%s] Unable to read register 0x%02x: %s", __name__, register, e)
+            logging.error("[%s] Unable to read register 0x%02X: %s", __name__, register, e)
             return
 
     def write_register(self, register: int, value: int):
@@ -52,6 +52,15 @@ class I2cDevice:
 class DutyCycleValue(Enum):
     RAW_VALUE  = 1
     PERCENTAGE = 2
+
+
+class PinSixMode(Enum):
+    """
+    Pin 6 is dualpurpose. It can either be used to send an interrupt or
+    for reading the fan's tacho signal.
+    """
+    ALERT = 1  # assert if temperature range is exceeded
+    TACHO = 2  # receive fan tacho signal
 
 
 def _convert_dutycycle_percentage2raw(value: int) -> int:
@@ -86,6 +95,7 @@ class Emc2101:
         self._i2c_device = I2cDevice(i2c_bus=i2c_bus, i2c_address=i2c_address)
         self._duty_min = _convert_dutycycle_percentage2raw(fan_config.minimum_duty_cycle)
         self._duty_max = _convert_dutycycle_percentage2raw(fan_config.maximum_duty_cycle)
+        self._pin_six = None  # will be initialize when needed
         self._rpm_min = fan_config.minimum_rpm
         self._rpm_max = fan_config.maximum_rpm
 
@@ -110,21 +120,33 @@ class Emc2101:
         """
         must select between /ALERT and TACHO
         """
+        LH.debug("Configuring pin 6 as tacho signal.")
         cfg_register_value = self._i2c_device.read_register(0x03)
         self._i2c_device.write_register(0x03, cfg_register_value | 0b0000_0100)
 
-    def get_fan_speed(self) -> int:
-        # step 0) enable tacho pin if not enabled already
-        # step 1) get tach readings
+    def get_fan_speed(self) -> int | None:
+        # initialize if needed
+        if self._pin_six is None:
+            if self._i2c_device.read_register(0x03) & 0b0000_0100:
+                self._pin_six = PinSixMode.TACHO
+            else:
+                self._pin_six = PinSixMode.ALERT
+        # step 1) verify tacho mode is configured
+        if self._pin_six != PinSixMode.TACHO:
+            LH.warning("Pin six is not configured for tacho mode. Please enable tacho mode.")
+            return
+        # step 2) get tach readings
         tach_lsb = self._i2c_device.read_register(0x46)
         tach_msb = self._i2c_device.read_register(0x47)
-        LH.info("tach readings: LSB=0x%02x MSB=0x%02x", tach_lsb, tach_msb)
-        # tach_lsb = 0b0000_0000
-        # tach_msb = 0b0000_0001
+        LH.debug("tach readings: LSB=0x%02X MSB=0x%02X", tach_lsb, tach_msb)
         tach_total = tach_lsb + (tach_msb << 8)
-        LH.info("tach readings: %i, 0x%04x", tach_total, tach_total)
-        rpm_count = 5_400_000 / tach_total
-        LH.info("rpm count: %i", rpm_count)
+        LH.debug("tach readings: %i, 0x%04X", tach_total, tach_total)
+        # step 3) convert counter value to RPM
+        if tach_total != 0xFFFF:
+            return 5_400_000 / tach_total
+        else:
+            # unable to read a meaningful value
+            return
 
     def get_current_rpm(self) -> int:
         # count = 0

@@ -33,7 +33,7 @@ if __name__ == '__main__':
     cfg_register = emc2101._i2c_device.read_register(0x03)
     LH.info("config register:              0x%02x (0b%s)", cfg_register, format(cfg_register, '08b'))
 
-    emc2101._i2c_device.write_register(0x4b, 0x3f)
+    emc2101._i2c_device.write_register(0x4b, 0x1f)
 
     fancfg_register = emc2101.read_fancfg_register()
     LH.info("fan config register:          0x%02x (0b%s)", fancfg_register, format(fancfg_register, '08b'))
@@ -45,7 +45,14 @@ if __name__ == '__main__':
     LH.info("duty cycle:             %4i%% (min: %i%%, max: %i%%)", emc2101.get_dutycycle(), emc2101.get_minimum_dutycycle(), emc2101.get_maximum_dutycycle())
     emc2101.set_dutycycle(60, disable_lut=True)
     LH.info("duty cycle:             %4i%% (min: %i%%, max: %i%%)", emc2101.get_dutycycle(), emc2101.get_minimum_dutycycle(), emc2101.get_maximum_dutycycle())
-    LH.info("current fan speed:      %4iRPM", emc2101.get_current_rpm())
+
+    while True:
+        rpm = emc2101.get_fan_speed()
+        if rpm is not None:
+            LH.info("current fan speed:      %4iRPM", emc2101.get_fan_speed())
+        else:
+            LH.info("current fan speed:      <n/a>")
+        time.sleep(2)
 
     # fan_config = emc2101.calibrate()
     # LH.info("minimum duty cycle: %4i%%", fan_config.minimum_duty_cycle)
