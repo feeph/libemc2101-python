@@ -28,7 +28,13 @@ if __name__ == '__main__':
     LH.debug("id: 0x%02x, revision: %i", emc2101.get_product_id(), emc2101.get_product_revision())
     # ---------------------------------------------------------------------
     emc2101.reset_device_registers()
+    emc2101.enable_tacho_pin()
     # ---------------------------------------------------------------------
+    cfg_register = emc2101._i2c_device.read_register(0x03)
+    LH.info("config register:              0x%02x (0b%s)", cfg_register, format(cfg_register, '08b'))
+
+    emc2101._i2c_device.write_register(0x4b, 0x3f)
+
     fancfg_register = emc2101.read_fancfg_register()
     LH.info("fan config register:          0x%02x (0b%s)", fancfg_register, format(fancfg_register, '08b'))
     # ---------------------------------------------------------------------
@@ -45,6 +51,8 @@ if __name__ == '__main__':
     # LH.info("minimum duty cycle: %4i%%", fan_config.minimum_duty_cycle)
     # LH.info("maximum fan speed:  %4iRPM", fan_config.maximum_rpm)
 
-    emc2101.set_dutycycle(100, disable_lut=True)
-    time.sleep(2)
-    emc2101.get_fan_speed()
+    # emc2101.set_dutycycle(100, disable_lut=True)
+    # time.sleep(2)
+    # emc2101.get_fan_speed()
+
+    # emc2101._i2c_device.read_register()

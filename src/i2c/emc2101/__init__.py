@@ -106,8 +106,15 @@ class Emc2101:
     def get_product_revision(self):
         return self._i2c_device.read_register(0xFF)
 
+    def enable_tacho_pin(self):
+        """
+        must select between /ALERT and TACHO
+        """
+        cfg_register_value = self._i2c_device.read_register(0x03)
+        self._i2c_device.write_register(0x03, cfg_register_value | 0b0000_0100)
+
     def get_fan_speed(self) -> int:
-        # step 0) trigger a oneshot?
+        # step 0) enable tacho pin if not enabled already
         # step 1) get tach readings
         tach_lsb = self._i2c_device.read_register(0x46)
         tach_msb = self._i2c_device.read_register(0x47)
@@ -313,7 +320,7 @@ class Emc2101:
             0x0C: 0b0000_0000,  # external temperature (forced)        6.8
             0x11: 0b0000_0000,  # scratchpad #1                        6.10
             0x12: 0b0000_0000,  # scratchpad #2                        6.10
-            0x16: 0b0000_0100,  # alert mastk                          6.11
+            0x16: 0b1010_0100,  # alert mask                           6.11
             0x17: 0b0001_0010,  # external ideality                    6.12
             0x18: 0b0000_1000,  # beta compensation                    6.13
             0x48: 0b1111_1111,  # tach limit, LSB                      6.15
