@@ -69,10 +69,10 @@ class TestUsingPhysicalDevice(unittest.TestCase):
         self.assertLessEqual(computed, 100.0, f"Duty cycle is higher than 3000 RPM?! {computed}")
 
     def test_duty_cycle(self):
-        self.emc2101.set_dutycycle(50)  # EMC2101 supports 64 steps (1.5% resolution)
+        self.emc2101.set_dutycycle(100)  # in percent
         # -----------------------------------------------------------------
         computed = self.emc2101.get_dutycycle()
-        expected = 50.0
+        expected = 100
         # -----------------------------------------------------------------
         self.assertGreaterEqual(computed, 0.0, f"Duty cycle is less than zero percent?! {computed}")
         self.assertLessEqual(computed, 100.0, f"Duty cycle is higher than hundred percent?! {computed}")

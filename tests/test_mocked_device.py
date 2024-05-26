@@ -4,12 +4,14 @@
 
 import unittest
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, call
 
 import i2c.emc2101
 
+from i2c.emc2101 import DutyCycleValue
 
-class TestUsingPhysicalDevice(unittest.TestCase):
+
+class TestUsingMockedDevice(unittest.TestCase):
 
     def setUp(self):
         # instantiate an object with dummy inputs
@@ -73,18 +75,25 @@ class TestUsingPhysicalDevice(unittest.TestCase):
         self.emc2101._i2c_device.read_register.assert_called_with(0x05)
 
     def test_duty_cycle_read(self):
-        self.emc2101._i2c_device.read_register = MagicMock(return_value=80, spec=True)
+        self.emc2101._i2c_device.read_register = MagicMock(return_value=32, spec=True)
         # -----------------------------------------------------------------
-        computed = self.emc2101.get_dutycycle()
-        expected = 80.0
+        computed = self.emc2101.get_dutycycle(value_type=DutyCycleValue.RAW_VALUE)
+        expected = 32
         # -----------------------------------------------------------------
-        self.assertAlmostEqual(computed, expected)
+        self.assertEqual(computed, expected)
         self.emc2101._i2c_device.read_register.assert_called_with(0x4C)
 
     def test_duty_cycle_write(self):
-        self.emc2101._i2c_device.read_register = MagicMock(return_value=80, spec=True)
+        self.emc2101._i2c_device.read_register = MagicMock(return_value=63, spec=True)  # raw value (100%=63)
         self.emc2101._i2c_device.write_register = MagicMock(spec=True)
         # -----------------------------------------------------------------
-        self.emc2101.set_dutycycle(80)
+        computed = self.emc2101.set_dutycycle(100)  # in percent
+        expected = 100                              # in percent
         # -----------------------------------------------------------------
-        self.emc2101._i2c_device.write_register.assert_called_with(0x4C, 80)
+        self.assertEqual(computed, expected)
+        self.emc2101._i2c_device.write_register.assert_has_calls(
+            [
+                call(0x4C, 63),
+                call(0x4A, 0b0010_1111),
+            ]
+        )

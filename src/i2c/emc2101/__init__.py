@@ -9,6 +9,7 @@ import logging
 import math
 import time
 
+from enum import Enum
 from typing import Dict, Optional
 
 import adafruit_emc2101
@@ -48,6 +49,33 @@ class I2cDevice:
         self._i2c_bus.writeto(address=self._i2c_adr, buffer=buf)
 
 
+class DutyCycleValue(Enum):
+    RAW_VALUE  = 1
+    PERCENTAGE = 2
+
+
+def _convert_dutycycle_percentage2raw(value: int) -> int:
+    """
+    convert the provided value from percentage to the internal value
+    used by EMC2101 (0% -> 0, 100% -> 63)
+    """
+    if value >= 0 and value <= 100:
+        return round(value * 63 / 100)
+    else:
+        raise ValueError("Percentage value must be in range 0 <= x <= 100!")
+
+
+def _convert_dutycycle_raw2percentage(value: int) -> int:
+    """
+    convert the provided value from the internal value to percentage
+    used by EMC2101 (0 -> 0%, 63 -> 100%)
+    """
+    if value >= 0 and value <= 63:
+        return round(value * 100 / 63)
+    else:
+        raise ValueError("Raw value must be in range 0 <= x <= 63!")
+
+
 class Emc2101:
 
     def __init__(self, i2c_bus: busio.I2C, i2c_address: int = 0x4c, fan_config: FanConfig = generic_pwm_fan):
@@ -56,11 +84,10 @@ class Emc2101:
             self._emc2101 = adafruit_emc2101.EMC2101(i2c_bus=i2c_bus)
         # -- our own internals --
         self._i2c_device = I2cDevice(i2c_bus=i2c_bus, i2c_address=i2c_address)
-        self._duty_min = fan_config.minimum_duty_cycle
-        self._duty_max = fan_config.maximum_duty_cycle
+        self._duty_min = _convert_dutycycle_percentage2raw(fan_config.minimum_duty_cycle)
+        self._duty_max = _convert_dutycycle_percentage2raw(fan_config.maximum_duty_cycle)
         self._rpm_min = fan_config.minimum_rpm
         self._rpm_max = fan_config.maximum_rpm
-
 
     def get_manufacturer_id(self) -> Optional[int]:
         """
@@ -78,6 +105,19 @@ class Emc2101:
 
     def get_product_revision(self):
         return self._i2c_device.read_register(0xFF)
+
+    def get_fan_speed(self) -> int:
+        # step 0) trigger a oneshot?
+        # step 1) get tach readings
+        tach_lsb = self._i2c_device.read_register(0x46)
+        tach_msb = self._i2c_device.read_register(0x47)
+        LH.info("tach readings: LSB=0x%02x MSB=0x%02x", tach_lsb, tach_msb)
+        # tach_lsb = 0b0000_0000
+        # tach_msb = 0b0000_0001
+        tach_total = tach_lsb + (tach_msb << 8)
+        LH.info("tach readings: %i, 0x%04x", tach_total, tach_total)
+        rpm_count = 5_400_000 / tach_total
+        LH.info("rpm count: %i", rpm_count)
 
     def get_current_rpm(self) -> int:
         # count = 0
@@ -103,8 +143,8 @@ class Emc2101:
         # TODO set lower (0x48) and higher (0x49) 9 bits
         pass
 
-    def get_config(self) -> int:
-        # the register is described in datasheet section 6.16 "Fan Configuration Register"
+    def read_fancfg_register(self) -> int:
+        # described in datasheet section 6.16 "Fan Configuration Register"
         # 0b00000000
         #         ^^-- tachometer input mode
         #        ^---- clock frequency override
@@ -113,38 +153,64 @@ class Emc2101:
         #     ^------- configure lookup table (0 = on, 1 = off)
         return self._i2c_device.read_register(0x4A)
 
-    def get_dutycycle(self) -> int:
-        return self._i2c_device.read_register(0x4C)
+    def write_fancfg_register(self, value: int):
+        # described in datasheet section 6.16 "Fan Configuration Register"
+        # 0b00000000
+        #         ^^-- tachometer input mode
+        #        ^---- clock frequency override
+        #       ^----- clock select
+        #      ^------ polarity (0 = 100->0, 1 = 0->100)
+        #     ^------- configure lookup table (0 = on, 1 = off)
+        self._i2c_device.write_register(0x4A, value & 0xFF)
 
-    # the PWM driver included in the EMC2101 has, at most, 64 steps equalling 1.5% resolution
-    def set_dutycycle(self, value: int) -> int | None:
+    def get_dutycycle(self, value_type: DutyCycleValue = DutyCycleValue.PERCENTAGE) -> int:
+        value = self._i2c_device.read_register(0x4C)
+        if value_type == DutyCycleValue.PERCENTAGE:
+            return _convert_dutycycle_raw2percentage(value)
+        else:
+            return value
+
+    # the PWM driver included in the EMC2101 has, at most, 64 steps equalling ~1.5% resolution
+    def set_dutycycle(self, value: int, disable_lut: bool = False, value_type: DutyCycleValue = DutyCycleValue.PERCENTAGE) -> int | None:
         """
         set the fan duty cycle
          - clamp to minimum/maximum as defined by the fan configuration
          - returns the effective, clamped value or 'None' if no value was set
         """
-        # clamp to desired min/max
+        if value_type == DutyCycleValue.PERCENTAGE:
+            LH.debug("Converting percentage value to internal value.")
+            value = _convert_dutycycle_percentage2raw(value)
+        # clamp provide value to desired min/max
         if value < self._duty_min:
             value = self._duty_min
         if value > self._duty_max:
             value = self._duty_max
-        # TODO decide whether an active lookup table should take precedence and prevent setting
+        # step 1) change programming mode and enable updates
+        #   0b..0._.... = use lookup table
+        #   0b..1._.... = use manual control
+        # please note: must be set to 0b..1._.... before lut or pwm setting
         config_register = self._i2c_device.read_register(0x4A)
-        if not config_register & 0b00010000:
-            LH.debug("Disabling lookup table.")
-            config_register |= 0b00010000
-            self._i2c_device.write_register(0x4A, config_register)
+        if not config_register & 0b0010_0000:
+            if disable_lut:
+                LH.info("Lookup table is enabled and 'disable_lut' is set. Disabling.")
+                self._i2c_device.write_register(0x4A, config_register | 0b0010_0000)
+            else:
+                LH.warning("Lookup table is enabled. Use 'disable_lut=True' to override.")
+                return
         else:
-            LH.debug("Lookup table is already disabled.")
-        # set duty cycle (range: 0 <= x <= 64 ??)
+            LH.debug("Lookup table is already disabled. Using fan setting register.")
+        # step 2) set new duty cycle (range: 0 <= x <= 64 ??)
         self._i2c_device.write_register(0x4C, value)
-        return value
+        if value_type == DutyCycleValue.PERCENTAGE:
+            return _convert_dutycycle_raw2percentage(value)
+        else:
+            return value
 
     def get_minimum_dutycycle(self) -> int:
-        return self._duty_min
+        return _convert_dutycycle_raw2percentage(self._duty_min)
 
     def get_maximum_dutycycle(self) -> int:
-        return self._duty_max
+        return _convert_dutycycle_raw2percentage(self._duty_max)
 
     def get_chip_temperature(self) -> float:
         return float(self._i2c_device.read_register(0x00))
@@ -227,3 +293,59 @@ class Emc2101:
             # TODO determine cut-off threshold was reached and set self._duty_min
         fan_config = FanConfig(minimum_duty_cycle=self._duty_min, maximum_duty_cycle=self._duty_max, minimum_rpm=self._rpm_min, maximum_rpm=self._rpm_max)
         return fan_config
+
+    def reset_device_registers(self):
+        LH.debug("Resetting all device registers to their default values.")
+        defaults = {
+            #     value           purpose                             section
+            # -----------------------------------------------------------------
+            0x03: 0b0000_0000,  # configuration register               6.5
+            0x04: 0b0000_1000,  # conversion register                  6.6
+            # temperature limit registers                              6.7
+            0x05: 0b0100_0110,  # internal sensor
+            0x07: 0b0100_0110,  # external diode, high limit, MSB
+            0x08: 0b0000_0000,  # external diode, low limit,  MSB
+            0x13: 0b0000_0000,  # external diode, high limit, LSB
+            0x14: 0b0000_0000,  # external diode, low limit,  LSB
+            0x19: 0b0101_0101,  # critical temperature threshold
+            0x21: 0b0000_1010,  # critical temperature hysteresis
+            # -------------------------
+            0x0C: 0b0000_0000,  # external temperature (forced)        6.8
+            0x11: 0b0000_0000,  # scratchpad #1                        6.10
+            0x12: 0b0000_0000,  # scratchpad #2                        6.10
+            0x16: 0b0000_0100,  # alert mastk                          6.11
+            0x17: 0b0001_0010,  # external ideality                    6.12
+            0x18: 0b0000_1000,  # beta compensation                    6.13
+            0x48: 0b1111_1111,  # tach limit, LSB                      6.15
+            0x49: 0b1111_1111,  # tach limit, MSB                      6.15
+            0x4A: 0b0010_0000,  # fan configuration                    6.16
+            0x4B: 0b0011_1111,  # fan spinup configuration             6.17
+            0x4C: 0b0000_0000,  # fan setting                          6.18
+            0x4D: 0b0001_0111,  # pwm frequency                        6.19
+            0x4E: 0b0000_0001,  # pwm frequency divide                 6.20
+            0x4F: 0b0000_0100,  # fan control lookup table hysteresis  6.21
+            # fan control lookup table                                 6.22
+            # -------------------------
+            0xBF: 0b0000_0000,  # averaging filter                     6.23
+        }
+        for register, value in defaults.items():
+            self._i2c_device.write_register(register, value)
+
+
+def parse_fanconfig_register(value: int) -> dict[str, str]:
+    # 0b00000000
+    #         ^^-- tachometer input mode
+    #        ^---- clock frequency override
+    #       ^----- clock select
+    #      ^------ polarity (0 = 100->0, 1 = 0->100)
+    #     ^------- configure lookup table (0 = on, 1 = off)
+    config = {
+        "tachometer input mode":    value & 0b0000_0011,
+        "clock frequency override":     'use frequency divider' if value & 0b0000_0100 else 'use clock select',
+        "clock select base frequency":  '1.4kHz' if value & 0b0000_1000 else '360kHz',
+        "polarity":                     '0x00 = 100%, 0xFF = 0%' if value & 0b0001_0000 else '0x00 = 0%, 0xFF = 100%',
+        "configure lookup table":       'allow dutycycle update' if value & 0b0010_0000 else 'disable dutycycle update',
+        "external temperature setting": 'override external temperature' if value & 0b0100_0000 else 'measure external temperature',
+        # the highest bit is unused
+    }
+    return config
