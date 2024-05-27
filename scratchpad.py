@@ -1,8 +1,14 @@
 #!/usr/bin/env python3
+"""
+"""
 
+import argparse
 import logging
+import os
 import sys
 import time
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 
 import board
 import busio
@@ -15,7 +21,11 @@ LH = logging.getLogger('main')
 
 
 if __name__ == '__main__':
-    if len(sys.argv) > 1 and '-v' in sys.argv[1:]:
+    parser = argparse.ArgumentParser(prog='Test1', description='test & development script')
+    parser.add_argument('-v', '--verbose', action='store_true')
+    args = parser.parse_args()
+
+    if args.verbose:
         verbosity = 'DEBUG'
     else:
         verbosity = 'INFO'
@@ -54,7 +64,7 @@ if __name__ == '__main__':
         else:
             LH.info("current fan speed: <n/a>")
         time.sleep(2)
-
+mc
     # fan_config = emc2101.calibrate()
     # LH.info("minimum duty cycle: %4i%%", fan_config.minimum_duty_cycle)
     # LH.info("maximum fan speed:  %4iRPM", fan_config.maximum_rpm)
