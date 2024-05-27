@@ -64,7 +64,7 @@ if __name__ == '__main__':
         else:
             LH.info("current fan speed: <n/a>")
         time.sleep(2)
-mc
+
     # fan_config = emc2101.calibrate()
     # LH.info("minimum duty cycle: %4i%%", fan_config.minimum_duty_cycle)
     # LH.info("maximum fan speed:  %4iRPM", fan_config.maximum_rpm)
