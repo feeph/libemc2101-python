@@ -6,7 +6,7 @@ import unittest
 
 import i2c.emc2101
 
-from i2c.emc2101 import DutyCycleValue, DeviceConfig, FanConfig, LimitType, PinSixMode, RpmControlMode
+from i2c.emc2101 import DutyCycleValue, DeviceConfig, FanConfig, LimitType, PinSixMode, RpmControlMode, SpinUpStrength, SpinUpDuration
 
 
 class SimulatedI2cBus:
@@ -127,6 +127,15 @@ class TestUsingMockedDevice(unittest.TestCase):
     # ---------------------------------------------------------------------
     # control fan speed
     # ---------------------------------------------------------------------
+
+    def test_configure_spinup_behaviour(self):
+        spinup_duration = SpinUpDuration.TIME_0_80    # 0b...._.101
+        spinup_strength = SpinUpStrength.STRENGTH_50  # 0b...0_1...
+        fast_mode = True                              # 0b..1._....
+        # -----------------------------------------------------------------
+        self.emc2101.configure_spinup_behaviour(spinup_strength=spinup_strength, spinup_duration=spinup_duration, fast_mode=fast_mode)
+        # -----------------------------------------------------------------
+        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x4B), 0b0010_1101)
 
     # control duty cycle using manual control
 

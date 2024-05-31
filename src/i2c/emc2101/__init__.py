@@ -66,6 +66,24 @@ class PinSixMode(Enum):
     TACHO = 2  # receive fan tacho signal
 
 
+class SpinUpStrength(Enum):
+    BYPASS       = 0b0000_0000  # bypass spin-up cycle
+    STRENGTH_50  = 0b0000_1000  # drive at 50% speed
+    STRENGTH_75  = 0b0001_0000  # drive at 75% speed
+    STRENGTH_100 = 0b0001_1000  # drive at 100% speed (default)
+
+
+class SpinUpDuration(Enum):
+    TIME_0_00 = 0b0000_0000  # bypass spin-up cycle
+    TIME_0_05 = 0b0000_0001  # 0.05s
+    TIME_0_10 = 0b0000_0010  # 0.10s
+    TIME_0_20 = 0b0000_0011  # 0.20s
+    TIME_0_40 = 0b0000_0100  # 0.40s
+    TIME_0_80 = 0b0000_0101  # 0.80s
+    TIME_1_60 = 0b0000_0110  # 1.60s
+    TIME_3_20 = 0b0000_0111  # 3.20s (default)
+
+
 class DeviceConfig:
 
     def __init__(self, rpm_control_mode: RpmControlMode, pin_six_mode: PinSixMode, ideality_factor: int, beta_factor: int):
@@ -143,6 +161,33 @@ def _convert_temperature_value2raw(value: float) -> tuple[int, int]:
     return (msb, lsb)
 
 
+def _convert_rpm2tach(rpm: int) -> tuple[int, int]:
+    # due to the way the conversion works the RPM can never
+    # be less than 82
+    if rpm < 82:
+        raise ValueError("RPM can't be lower than 82")
+    tach = int(5_400_000/rpm)
+    tach = 4096
+    msb = (tach & 0xFF00) >> 8
+    lsb = tach & 0x00FF
+    return (msb, lsb)
+
+
+def _convert_tach2rpm(msb: int, lsb: int) -> int | None:
+    """
+    convert the raw values to an RPM value
+
+    returns 'None' if the reading is invalid
+    """
+    tach = (msb << 8) + lsb
+    # 0xFFFF = invalid value
+    if tach < 0xFFFF:
+        rpm = int(5_400_000/tach)
+        return rpm
+    else:
+        return
+
+
 def _verify_value_range(value: int, value_range: tuple[int, int]):
     lower_limit = value_range[0]
     upper_limit = value_range[1]
@@ -200,8 +245,8 @@ class Emc2101:
         self._pin_six_mode = _configure_pin_six_mode(self._i2c_device, device_config.pin_six_mode)
         self._duty_min     = _convert_dutycycle_percentage2raw(fan_config.minimum_duty_cycle)
         self._duty_max     = _convert_dutycycle_percentage2raw(fan_config.maximum_duty_cycle)
-        self._rpm_min      = fan_config.minimum_rpm
-        self._rpm_max      = fan_config.maximum_rpm
+        # configure lowest expected RPM value
+        _configure_minimum_rpm(self._i2c_device, minimum_rpm=fan_config.minimum_rpm)
 
     def get_manufacturer_id(self) -> Optional[int]:
         """
@@ -228,13 +273,6 @@ class Emc2101:
         product_revision  = self._i2c_device.read_register(0xFF)
         return f"{manufacturer_name} (0x{manufacturer_id:02X}) {product_name} (0x{product_id:02X}) (rev: {product_revision})"
 
-    def enable_tacho_pin(self):
-        """
-        must select between /ALERT and TACHO
-        """
-        LH.debug("Configuring pin 6 as tacho signal.")
-        self._pin_six_mode = _configure_pin_six_mode(self._i2c_device, PinSixMode.TACHO)
-
     # ---------------------------------------------------------------------
     # fan speed control
     # ---------------------------------------------------------------------
@@ -255,40 +293,39 @@ class Emc2101:
         """
         self._control_mode = _configure_control_mode(self._i2c_device, mode)
 
+    def configure_spinup_behaviour(self, spinup_strength: SpinUpStrength, spinup_duration: SpinUpDuration, fast_mode: bool):
+        """
+        configure the spin-up behavior for the attached fan (duration and
+        strength). This helps to ensure the fan has sufficient power
+        available to be able to start spinning the rotor.
+         - EMC2101 enters the spin-up routine any time it transitions
+           from a minimum fan setting (00h) to a higher fan setting
+         - EMC2101 does not invoke the spin-up routine upon power up
+         - setting a strength of 0% or duration of 0s disables spin-up entirely
+
+        Once spin-up has completed the fan speed is reduced to the programmed setting.
+
+        Please note: Fast_mode is ignored if pin 6 is in alert mode.
+        """
+        value = 0x00
+        # configure spin up time
+        value |= spinup_duration.value
+        # configure spin up strength (dutycycle)
+        value |= spinup_strength.value
+        if fast_mode:
+            value |= 0b0010_0000
+        self._i2c_device.write_register(0x4B, value)
+
     def get_rpm(self) -> int | None:
-        rpm = None
         # check if tacho mode is enabled
-        if self._pin_six_mode == PinSixMode.TACHO:
-            # get tacho readings
-            tach_lsb = self._i2c_device.read_register(0x46)
-            tach_msb = self._i2c_device.read_register(0x47)
-            LH.debug("tach readings: LSB=0x%02X MSB=0x%02X", tach_lsb, tach_msb)
-            tach_total = tach_lsb + (tach_msb << 8)
-            LH.debug("tach readings: %i, 0x%04X", tach_total, tach_total)
-            # convert raw value to RPM
-            if tach_total != 0xFFFF:
-                rpm = 5_400_000 / tach_total
-            else:
-                # unable to read a meaningful value
-                pass
-        else:
+        if self._pin_six_mode != PinSixMode.TACHO:
             LH.warning("Pin six is not configured for tacho mode. Please enable tacho mode.")
-        return rpm
-
-    def get_minimum_rpm(self):
-        count = 0
-        count |= self._i2c_device.read_register(0x48)         # lower 8 bits
-        count |= (self._i2c_device.read_register(0x49) << 1)  # upper 8 bits
-        return int(5400000/count)
-
-    def set_minimum_rpm(self, value: int):
-        """
-        This value defines the minimum possible value that the fan can
-        spin at. If a value below this limit is detected the fan is
-        considered to have stopped.
-        """
-        # TODO divide by 5400000
-        # TODO set lower (0x48) and higher (0x49) 9 bits
+            return
+        # get tacho readings
+        tach_lsb = self._i2c_device.read_register(0x46)  # TACH Reading Low Byte
+        tach_msb = self._i2c_device.read_register(0x47)  # TACH Reading High Byte
+        LH.debug("tach readings: LSB=0x%02X MSB=0x%02X", tach_lsb, tach_msb)
+        return _convert_tach2rpm(msb=tach_msb, lsb=tach_lsb)
 
     def read_fancfg_register(self) -> int:
         # described in datasheet section 6.16 "Fan Configuration Register"
@@ -559,6 +596,7 @@ def parse_fanconfig_register(value: int) -> dict[str, str]:
     }
     return config
 
+
 def _configure_control_mode(i2c_device: I2cDevice, control_mode: RpmControlMode) -> RpmControlMode:
     if control_mode == RpmControlMode.VOLTAGE:
         # set 0x03.4 to 1
@@ -573,6 +611,7 @@ def _configure_control_mode(i2c_device: I2cDevice, control_mode: RpmControlMode)
     else:
         raise NotImplementedError("unsupported RPM control mode")
 
+
 def _configure_pin_six_mode(i2c_device: I2cDevice, pin_six_mode: PinSixMode) -> PinSixMode:
     if pin_six_mode == PinSixMode.ALERT:
         # set 0x03.2 to 0
@@ -586,3 +625,17 @@ def _configure_pin_six_mode(i2c_device: I2cDevice, pin_six_mode: PinSixMode) -> 
         return PinSixMode.TACHO
     else:
         raise NotImplementedError("unsupported pin 6 mode")
+
+
+def _configure_minimum_rpm(i2c_device: I2cDevice, minimum_rpm: int):
+    """
+    configure the expected minimum RPM value
+
+    if the measured RPM is below this RPM the fan is considered to be
+    not spinning and the TACH bit is set
+
+    due to the way the RPM is measured the lowest possible value is 82 RPM
+    """
+    (msb, lsb) = _convert_rpm2tach(minimum_rpm)
+    i2c_device.write_register(0x48, lsb)  # TACH Limit Low Byte
+    i2c_device.write_register(0x49, msb)  # TACH Limit High Byte
