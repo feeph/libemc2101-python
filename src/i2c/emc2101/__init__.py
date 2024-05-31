@@ -19,6 +19,15 @@ from .fan_configs import FanConfig, RpmControlMode, generic_pwm_fan
 
 LH = logging.getLogger(__name__)
 
+MANUFACTURER_IDS = {
+    0x5D: "SMSC",
+}
+
+PRODUCT_IDS = {
+    0x16: "EMC2101",
+    0x28: "EMC2101R",
+}
+
 # number of temperature conversions per second
 CONVERSIONS_PER_SECOND = {
     "1/16": 0b0000,
@@ -210,6 +219,14 @@ class Emc2101:
 
     def get_product_revision(self):
         return self._i2c_device.read_register(0xFF)
+
+    def describe_device(self):
+        manufacturer_id   = self._i2c_device.read_register(0xFE)
+        manufacturer_name = MANUFACTURER_IDS.get(manufacturer_id, "<unknown manufacturer>")
+        product_id        = self._i2c_device.read_register(0xFD)
+        product_name      = PRODUCT_IDS.get(product_id, "<unknown product>")
+        product_revision  = self._i2c_device.read_register(0xFF)
+        return f"{manufacturer_name} (0x{manufacturer_id:02X}) {product_name} (0x{product_id:02X}) (rev: {product_revision})"
 
     def enable_tacho_pin(self):
         """

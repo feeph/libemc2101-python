@@ -85,10 +85,6 @@ class TestUsingMockedDevice(unittest.TestCase):
         # nothing to do
         pass
 
-    # ---------------------------------------------------------------------
-    # control fan speed
-    # ---------------------------------------------------------------------
-
     def test_manufacturer_id(self):
         self.i2c_bus._set_ro_register(0x4C, 0xFE, 0x5D)
         # -----------------------------------------------------------------
@@ -117,6 +113,20 @@ class TestUsingMockedDevice(unittest.TestCase):
         expected = range(0x00, 0x17)  # assuming 0..22 are valid values for revision
         # -----------------------------------------------------------------
         self.assertIn(computed, expected, f"Got unexpected product ID '{computed}'.")
+
+    def test_describe_product(self):
+        self.i2c_bus._set_ro_register(0x4C, 0xFE, 0x5D)
+        self.i2c_bus._set_ro_register(0x4C, 0xFD, 0x16)
+        self.i2c_bus._set_ro_register(0x4C, 0xFF, 0x02)
+        # -----------------------------------------------------------------
+        computed = self.emc2101.describe_device()
+        expected = "SMSC (0x5D) EMC2101 (0x16) (rev: 2)"
+        # -----------------------------------------------------------------
+        self.assertIn(computed, expected, f"Got unexpected product ID '{computed}'.")
+
+    # ---------------------------------------------------------------------
+    # control fan speed
+    # ---------------------------------------------------------------------
 
     # control duty cycle using manual control
 
