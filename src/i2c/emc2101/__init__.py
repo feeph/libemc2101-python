@@ -19,6 +19,24 @@ from .fan_configs import FanConfig, RpmControlMode, generic_pwm_fan
 
 LH = logging.getLogger(__name__)
 
+# number of temperature conversions per second
+CONVERSIONS_PER_SECOND = {
+    "1/16": 0b0000,
+    "1/8":  0b0001,
+    "1/4":  0b0010,
+    "1/2":  0b0011,
+    "1":    0b0100,
+    "2":    0b0101,
+    "4":    0b0110,
+    "8":    0b0111,
+    "16":   0b1000,
+    "32":   0b1001, # and all unlisted values
+}
+
+class DutyCycleControlMode(Enum):
+    MANUAL      = 1  # use manual control
+    LOOKUPTABLE = 2  # use lookup table
+
 
 class DutyCycleValue(Enum):
     RAW_VALUE  = 1
@@ -39,13 +57,31 @@ class PinSixMode(Enum):
     TACHO = 2  # receive fan tacho signal
 
 
+class DeviceConfig:
+
+    def __init__(self, rpm_control_mode: RpmControlMode, pin_six_mode: PinSixMode, ideality_factor: int, beta_factor: int):
+        """
+        configure hardware-specific settings
+
+        These settings depend on the EMC2101 and its supporting electric circuit.
+        """
+        self.i2c_address              = 0x4C              # address is hardcoded
+        self.rpm_control_mode         = rpm_control_mode  # supply voltage or PWM
+        self.pin_six_mode             = pin_six_mode      # interrupt pin or tacho sense
+        self.diode_ideality_factor    = ideality_factor   # datasheet section 6.12
+        self.beta_compensation_factor = beta_factor       # datasheet section 6.13
+
+
+emc2101_default_config = DeviceConfig(rpm_control_mode=RpmControlMode.VOLTAGE, pin_six_mode=PinSixMode.ALERT, ideality_factor=0x12, beta_factor=0x08)
+
+
 def _convert_dutycycle_percentage2raw(value: int) -> int:
     """
     convert the provided value from percentage to the internal value
     used by EMC2101 (0% -> 0x00, 100% -> 0x3F)
     """
     # 0x3F = 63
-    if value >= 0 and value <= 100:
+    if 0 <= value <= 100:
         return round(value * 63 / 100)
     else:
         raise ValueError("Percentage value must be in range 0 ≤ x ≤ 100!")
@@ -57,7 +93,7 @@ def _convert_dutycycle_raw2percentage(value: int) -> int:
     used by EMC2101 (0x00 -> 0%, 0x3F -> 100%)
     """
     # 0x3F = 63
-    if value >= 0 and value <= 63:
+    if 0 <= value <= 63:
         return round(value * 100 / 63)
     else:
         raise ValueError("Raw value must be in range 0 ≤ x ≤ 63!")
@@ -106,12 +142,8 @@ def _verify_value_range(value: int, value_range: tuple[int, int]):
 
 
 def _clamp_to_range(value: int, value_range: tuple[int, int]) -> int:
-    lower_limit = value_range[0]
-    upper_limit = value_range[1]
-    if value < lower_limit:
-        value = lower_limit
-    if value > upper_limit:
-        value = upper_limit
+    value = max(value, value_range[0])
+    value = min(value, value_range[1])
     return value
 
 
@@ -151,10 +183,12 @@ DEFAULTS = {
 
 class Emc2101:
 
-    def __init__(self, i2c_bus: busio.I2C, i2c_address: int = 0x4C, fan_config: FanConfig = generic_pwm_fan, pin_six_mode: PinSixMode = PinSixMode.ALERT):
-        self._i2c_device   = I2cDevice(i2c_bus=i2c_bus, i2c_address=i2c_address)
-        self._control_mode = _configure_control_mode(self._i2c_device, fan_config.rpm_control_mode)
-        self._pin_six_mode = _configure_pin_six_mode(self._i2c_device, pin_six_mode)
+    def __init__(self, i2c_bus: busio.I2C, device_config: DeviceConfig = emc2101_default_config, fan_config: FanConfig = generic_pwm_fan):
+        if not is_fan_compatible(device_config=device_config, fan_config=fan_config):
+            raise RuntimeError("fan is not compatible with this device")
+        self._i2c_device   = I2cDevice(i2c_bus=i2c_bus, i2c_address=device_config.i2c_address)
+        self._control_mode = _configure_control_mode(self._i2c_device, device_config.rpm_control_mode)
+        self._pin_six_mode = _configure_pin_six_mode(self._i2c_device, device_config.pin_six_mode)
         self._duty_min     = _convert_dutycycle_percentage2raw(fan_config.minimum_duty_cycle)
         self._duty_max     = _convert_dutycycle_percentage2raw(fan_config.maximum_duty_cycle)
         self._rpm_min      = fan_config.minimum_rpm
@@ -182,7 +216,11 @@ class Emc2101:
         must select between /ALERT and TACHO
         """
         LH.debug("Configuring pin 6 as tacho signal.")
-        self._pin_six = _configure_pin_six_mode(self._i2c_device, PinSixMode.TACHO)
+        self._pin_six_mode = _configure_pin_six_mode(self._i2c_device, PinSixMode.TACHO)
+
+    # ---------------------------------------------------------------------
+    # fan speed control
+    # ---------------------------------------------------------------------
 
     def get_rpm_control_mode(self) -> RpmControlMode:
         """
@@ -190,7 +228,7 @@ class Emc2101:
         """
         cfg_register_value = self._i2c_device.read_register(0x03)
         if cfg_register_value & 0b0001_0000:
-            return RpmControlMode.DC
+            return RpmControlMode.VOLTAGE
         else:
             return RpmControlMode.PWM
 
@@ -201,27 +239,29 @@ class Emc2101:
         self._control_mode = _configure_control_mode(self._i2c_device, mode)
 
     def get_rpm(self) -> int | None:
-        # step 1) verify tacho mode is configured
-        if self._pin_six_mode != PinSixMode.TACHO:
-            LH.warning("Pin six is not configured for tacho mode. Please enable tacho mode.")
-            return
-        # step 2) get tach readings
-        tach_lsb = self._i2c_device.read_register(0x46)
-        tach_msb = self._i2c_device.read_register(0x47)
-        LH.debug("tach readings: LSB=0x%02X MSB=0x%02X", tach_lsb, tach_msb)
-        tach_total = tach_lsb + (tach_msb << 8)
-        LH.debug("tach readings: %i, 0x%04X", tach_total, tach_total)
-        # step 3) convert counter value to RPM
-        if tach_total != 0xFFFF:
-            return 5_400_000 / tach_total
+        rpm = None
+        # check if tacho mode is enabled
+        if self._pin_six_mode == PinSixMode.TACHO:
+            # get tacho readings
+            tach_lsb = self._i2c_device.read_register(0x46)
+            tach_msb = self._i2c_device.read_register(0x47)
+            LH.debug("tach readings: LSB=0x%02X MSB=0x%02X", tach_lsb, tach_msb)
+            tach_total = tach_lsb + (tach_msb << 8)
+            LH.debug("tach readings: %i, 0x%04X", tach_total, tach_total)
+            # convert raw value to RPM
+            if tach_total != 0xFFFF:
+                rpm = 5_400_000 / tach_total
+            else:
+                # unable to read a meaningful value
+                pass
         else:
-            # unable to read a meaningful value
-            return
+            LH.warning("Pin six is not configured for tacho mode. Please enable tacho mode.")
+        return rpm
 
     def get_minimum_rpm(self):
         count = 0
-        count |= self._i2c_device.read_register(0x48, 1)         # lower 8 bits
-        count |= (self._i2c_device.read_register(0x49, 1) << 1)  # upper 8 bits
+        count |= self._i2c_device.read_register(0x48)         # lower 8 bits
+        count |= (self._i2c_device.read_register(0x49) << 1)  # upper 8 bits
         return int(5400000/count)
 
     def set_minimum_rpm(self, value: int):
@@ -232,7 +272,6 @@ class Emc2101:
         """
         # TODO divide by 5400000
         # TODO set lower (0x48) and higher (0x49) 9 bits
-        pass
 
     def read_fancfg_register(self) -> int:
         # described in datasheet section 6.16 "Fan Configuration Register"
@@ -307,6 +346,45 @@ class Emc2101:
     def get_maximum_dutycycle(self) -> int:
         return _convert_dutycycle_raw2percentage(self._duty_max)
 
+    def update_lookup_table(self, values: Dict[int, int]):
+        if len(values) > 8:
+            raise ValueError("Temperature lookup table must have at most 8 entries!")
+        # TODO send I²C command to update the lookup table
+        # 0x50..0x5f (8 x 2 registers; temp->duty)
+
+    def delete_lookup_table(self):
+        buf = b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+        return self._i2c_device.write_register(0x50, 16, buf)
+
+    # ---------------------------------------------------------------------
+    # temperature measurements
+    # ---------------------------------------------------------------------
+
+    def get_temperature_conversion_rate(self) -> str:
+        """
+        get the number of temperature conversions per second
+        """
+        value = self._i2c_device.read_register(0x04)
+        value = min(value, 0b1001)  # all values larger than 0b1001 map to 0b1001
+        return [k for k, v in CONVERSIONS_PER_SECOND.items() if v == value][0]
+
+    def get_temperature_conversion_rates(self) -> list[str]:
+        """
+        returns all available temperature conversion rates
+        """
+        return CONVERSIONS_PER_SECOND.keys()
+
+    def set_temperature_conversion_rate(self, conversion_rate: str) -> bool:
+        """
+        set the number of temperature conversions per second
+        """
+        value = CONVERSIONS_PER_SECOND.get(conversion_rate)
+        if value is not None:
+            self._i2c_device.write_register(0x04, value)
+            return True
+        else:
+            return False
+
     def get_chip_temperature(self) -> float:
         return float(self._i2c_device.read_register(0x00))
 
@@ -361,16 +439,6 @@ class Emc2101:
         self._i2c_device.write_register(reg_lsb, lsb)
         return _convert_temperature_raw2value(msb, lsb)
 
-    def update_lookup_table(self, values: Dict[int, int]):
-        if len(values) > 8:
-            raise ValueError("Temperature lookup table must have at most 8 entries!")
-        # TODO send I²C command to update the lookup table
-        # 0x50..0x5f (8 x 2 registers; temp->duty)
-
-    def delete_lookup_table(self):
-        buf = b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
-        return self._i2c_device.write_register(0x50, 16, buf)
-
     # convenience functions
 
     def calibrate(self) -> FanConfig:
@@ -408,19 +476,52 @@ class Emc2101:
             rpm = self.get_rpm()
             LH.debug("duty cycle: %2i rpm: %4i", duty_cycle, rpm)
             # TODO determine cut-off threshold was reached and set self._duty_min
-        fan_config = FanConfig(minimum_duty_cycle=self._duty_min, maximum_duty_cycle=self._duty_max, minimum_rpm=self._rpm_min, maximum_rpm=self._rpm_max)
+        fan_config = FanConfig(rpm_control_mode=self._control_mode, minimum_duty_cycle=self._duty_min, maximum_duty_cycle=self._duty_max, minimum_rpm=self._rpm_min, maximum_rpm=self._rpm_max)
         return fan_config
 
     def read_device_registers(self) -> dict[int, int]:
         registers = {}
         for register in DEFAULTS.keys():
-            registers[register] = value = self._i2c_device.read_register(register)
+            registers[register] = self._i2c_device.read_register(register)
         return registers
 
     def reset_device_registers(self):
         LH.debug("Resetting all device registers to their default values.")
         for register, value in DEFAULTS.items():
             self._i2c_device.write_register(register, value)
+
+
+def is_fan_compatible(device_config: DeviceConfig, fan_config: FanConfig) -> bool:
+    """
+    The supporting circuit for EMC2101 is wired for a specific configuration.
+    If we connect a fan that expects a different configuration it won't work.
+    """
+    is_compatible = False
+    if device_config.rpm_control_mode == RpmControlMode.VOLTAGE:
+        # emc2101: supply voltage, fan: supply voltage -> works
+        if fan_config.rpm_control_mode == RpmControlMode.VOLTAGE:
+            LH.info("EMC2101 and connected fan both use supply voltage to control fan speed. Good.")
+            is_compatible = True
+        # emc2101: supply voltage, fan: PWM -> may work
+        elif fan_config.rpm_control_mode == RpmControlMode.PWM:
+            LH.warning("EMC2101 uses supply voltage but fan expects PWM. RPM control kind of works.")
+            is_compatible = True
+        else:
+            raise ValueError("fan has unsupported rpm control mode")
+    elif device_config.rpm_control_mode == RpmControlMode.PWM:
+        # emc2101: PWM, fan: supply voltage -> will not work
+        if fan_config.rpm_control_mode == RpmControlMode.VOLTAGE:
+            LH.error("EMC2101 uses PWM but fan is controlled via supply voltage! RPM control will not work as expected!")
+            is_compatible = False
+        # emc2101: PWM, fan: PWM -> works
+        elif device_config.rpm_control_mode == RpmControlMode.PWM:
+            LH.info("EMC2101 and connected fan both use PWM to control fan speed. Good.")
+            is_compatible = True
+        else:
+            raise ValueError("fan has unsupported rpm control mode")
+    else:
+        raise ValueError("device has unsupported rpm control mode")
+    return is_compatible
 
 
 def parse_fanconfig_register(value: int) -> dict[str, str]:
@@ -442,11 +543,11 @@ def parse_fanconfig_register(value: int) -> dict[str, str]:
     return config
 
 def _configure_control_mode(i2c_device: I2cDevice, control_mode: RpmControlMode) -> RpmControlMode:
-    if control_mode == RpmControlMode.DC:
+    if control_mode == RpmControlMode.VOLTAGE:
         # set 0x03.4 to 1
         cfg_register_value = i2c_device.read_register(0x03)
         i2c_device.write_register(0x03, cfg_register_value | 0b0001_0000)
-        return RpmControlMode.DC
+        return RpmControlMode.VOLTAGE
     elif control_mode == RpmControlMode.PWM:
         # set 0x03.4 to 0
         cfg_register_value = i2c_device.read_register(0x03)
