@@ -63,10 +63,10 @@ class TestUsingPhysicalDevice(unittest.TestCase):
         self.assertLessEqual(computed, 100.0, f"Chip temperature limit is higher than 100°C?! {computed}")
 
     def test_current_rpm(self):
-        computed = self.emc2101.get_current_rpm()
+        computed = self.emc2101.get_rpm()
         # -----------------------------------------------------------------
         self.assertGreaterEqual(computed, 0, f"Current fan speed is less than 0 RPM?! {computed}")
-        self.assertLessEqual(computed, 100.0, f"Duty cycle is higher than 3000 RPM?! {computed}")
+        self.assertLessEqual(computed, 50000.0, f"Current fan speed is higher than 50000 RPM?! {computed}")  # too high (even for Delta fans)
 
     def test_duty_cycle(self):
         self.emc2101.set_dutycycle(100)  # in percent
