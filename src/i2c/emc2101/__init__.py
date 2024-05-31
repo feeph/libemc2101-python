@@ -345,19 +345,24 @@ class Emc2101:
     def set_sensor_temperature_limit(self, value: float, limit_type: LimitType):
         """
         set upper/lower temperature alerting limit in °C
+
+        The fractional part has limited precision and will be clamped to the
+        nearest available step. The clamped value is returned to the caller.
         """
         if value < 0 or value > 85:
             raise ValueError("temperature limit out of range (0 < =x <= 85°C)")
         (msb, lsb) = _convert_temperature_value2raw(value)
         if limit_type == LimitType.LOWER:
-            self._i2c_device.write_register(0x08, msb)
-            self._i2c_device.write_register(0x14, lsb)
+            reg_msb = 0x08
+            reg_lsb = 0x14
         elif limit_type == LimitType.UPPER:
-            self._i2c_device.write_register(0x07, msb)
-            self._i2c_device.write_register(0x13, lsb)
-            pass
+            reg_msb = 0x07
+            reg_lsb = 0x13
         else:
             raise ValueError("invalid limit type")
+        self._i2c_device.write_register(reg_msb, msb)
+        self._i2c_device.write_register(reg_lsb, lsb)
+        return _convert_temperature_raw2value(msb, lsb)
 
     def update_lookup_table(self, values: Dict[int, int]):
         if len(values) > 8:

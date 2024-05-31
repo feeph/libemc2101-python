@@ -149,20 +149,31 @@ class TestUsingMockedDevice(unittest.TestCase):
         self.assertEqual(computed, expected, f"Got unexpected sensor temperature limit '{computed}'.")
 
     def test_sensor_temperature_limit_write_lower(self):
-        self.emc2101.set_sensor_temperature_limit(5.95, limit_type=LimitType.LOWER)
         # -----------------------------------------------------------------
-        computed = self.emc2101.get_sensor_temperature_limit(limit_type=LimitType.LOWER)
+        computed = self.emc2101.set_sensor_temperature_limit(5.91, limit_type=LimitType.LOWER)
         expected = 5.9
         # -----------------------------------------------------------------
         self.assertEqual(computed, expected, f"Got unexpected sensor temperature limit '{computed}'.")
+        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x08), 0x05)
+        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x14), 0b1110_0000)
 
     def test_sensor_temperature_limit_read_upper(self):
-        self.emc2101.set_sensor_temperature_limit(84.95, limit_type=LimitType.UPPER)
+        self.i2c_bus._set_rw_register(0x4C, 0x07, 0x54)
+        self.i2c_bus._set_rw_register(0x4C, 0x13, 0b1110_0000)
         # -----------------------------------------------------------------
         computed = self.emc2101.get_sensor_temperature_limit(limit_type=LimitType.UPPER)
         expected = 84.9
         # -----------------------------------------------------------------
         self.assertEqual(computed, expected, f"Got unexpected sensor temperature limit '{computed}'.")
+
+    def test_sensor_temperature_limit_write_upper(self):
+        # -----------------------------------------------------------------
+        computed = self.emc2101.set_sensor_temperature_limit(84.91, limit_type=LimitType.UPPER)
+        expected = 84.9
+        # -----------------------------------------------------------------
+        self.assertEqual(computed, expected, f"Got unexpected sensor temperature limit '{computed}'.")
+        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x07), 0x54)
+        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x13), 0b1110_0000)
 
     # control duty cycle using manual control
 
