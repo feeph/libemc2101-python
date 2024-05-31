@@ -15,43 +15,21 @@ from typing import Dict, Optional
 import adafruit_emc2101
 import busio
 
-from .fan_configs import FanConfig, generic_pwm_fan
+from i2c.i2c_device import I2cDevice
+from .fan_configs import FanConfig, RpmControlMode, generic_pwm_fan
 
 
 LH = logging.getLogger(__name__)
 
 
-class I2cDevice:
-
-    def __init__(self, i2c_bus: busio.I2C, i2c_address: int = 0x4c):
-        self._i2c_bus = i2c_bus
-        self._i2c_adr = i2c_address
-
-    def read_register(self, register: int) -> Optional[int]:
-        """
-        read a single byte register and return its content as an integer value
-        """
-        buf_r = bytearray(1)
-        buf_r[0] = register
-        buf_w = bytearray(1)
-        try:
-            self._i2c_bus.writeto_then_readfrom(address=self._i2c_adr, buffer_out=buf_r, buffer_in=buf_w)
-            return buf_w[0]
-        except RuntimeError as e:
-            logging.error("[%s] Unable to read register 0x%02X: %s", __name__, register, e)
-            return
-
-    def write_register(self, register: int, value: int):
-        buf = bytearray(2)
-        buf[0] = register
-        buf[1] = value & 0xFF
-        # function does not return any values
-        self._i2c_bus.writeto(address=self._i2c_adr, buffer=buf)
-
-
 class DutyCycleValue(Enum):
     RAW_VALUE  = 1
     PERCENTAGE = 2
+
+
+class LimitType(Enum):
+    LOWER = 1
+    UPPER = 2
 
 
 class PinSixMode(Enum):
@@ -63,16 +41,12 @@ class PinSixMode(Enum):
     TACHO = 2  # receive fan tacho signal
 
 
-class RpmControlMode(Enum):
-    DAC = 1  # use supply voltage to control fan speed (2 and 3 pin fans)
-    PWM = 2  # usi pulse width modulation to control fan speed (4 pin fans)
-
-
 def _convert_dutycycle_percentage2raw(value: int) -> int:
     """
     convert the provided value from percentage to the internal value
-    used by EMC2101 (0% -> 0, 100% -> 63)
+    used by EMC2101 (0% -> 0x00, 100% -> 0x3F)
     """
+    # 0x3F = 63
     if value >= 0 and value <= 100:
         return round(value * 63 / 100)
     else:
@@ -82,28 +56,98 @@ def _convert_dutycycle_percentage2raw(value: int) -> int:
 def _convert_dutycycle_raw2percentage(value: int) -> int:
     """
     convert the provided value from the internal value to percentage
-    used by EMC2101 (0 -> 0%, 63 -> 100%)
+    used by EMC2101 (0x00 -> 0%, 0x3F -> 100%)
     """
+    # 0x3F = 63
     if value >= 0 and value <= 63:
         return round(value * 100 / 63)
     else:
         raise ValueError("Raw value must be in range 0 <= x <= 63!")
 
 
+def _convert_temperature_raw2value(msb: int, lsb:int) -> float:
+    """
+    convert the provided temperature from internal value to float
+    (0x0C + 0xE0 -> 13.9)
+    """
+    temp = float(msb)
+    if lsb & 0b1000_0000:
+        temp += 0.50
+    if lsb & 0b0100_0000:
+        temp += 0.25
+    if lsb & 0b0010_0000:
+        temp += 0.15
+    return temp
+
+
+def _convert_temperature_value2raw(value: float) -> tuple[int, int]:
+    """
+    convert the provided temperature from float to the internal value
+    (13.9 -> 0x0C + 0xE0)
+    """
+    msb = int(value)
+    lsb = 0x00
+    fraction = value - msb  # 0.00..0.99
+    if fraction >= 0.5:
+        lsb |= 0b1000_0000
+        fraction -= 0.5
+    if fraction >= 0.25:
+        lsb |= 0b0100_0000
+        fraction -= 0.25
+    if fraction >= 0.15:
+        lsb |= 0b0010_0000
+        fraction -= 0.15
+    return (msb, lsb)
+
+
+DEFAULTS = {
+    #     value           purpose                             section
+    # -----------------------------------------------------------------
+    0x03: 0b0000_0000,  # configuration register               6.5
+    0x04: 0b0000_1000,  # conversion register                  6.6
+    # temperature limit registers                              6.7
+    0x05: 0b0100_0110,  # internal sensor
+    0x07: 0b0100_0110,  # external diode, high limit, MSB
+    0x08: 0b0000_0000,  # external diode, low limit,  MSB
+    0x13: 0b0000_0000,  # external diode, high limit, LSB
+    0x14: 0b0000_0000,  # external diode, low limit,  LSB
+    0x19: 0b0101_0101,  # critical temperature threshold
+    0x21: 0b0000_1010,  # critical temperature hysteresis
+    # -------------------------
+    0x0C: 0b0000_0000,  # external temperature (forced)        6.8
+    0x11: 0b0000_0000,  # scratchpad #1                        6.10
+    0x12: 0b0000_0000,  # scratchpad #2                        6.10
+    0x16: 0b1010_0100,  # alert mask                           6.11
+    0x17: 0b0001_0010,  # external ideality                    6.12
+    0x18: 0b0000_1000,  # beta compensation                    6.13
+    0x48: 0b1111_1111,  # tach limit, LSB                      6.15
+    0x49: 0b1111_1111,  # tach limit, MSB                      6.15
+    0x4A: 0b0010_0000,  # fan configuration                    6.16
+    0x4B: 0b0011_1111,  # fan spinup configuration             6.17
+    0x4C: 0b0000_0000,  # fan setting                          6.18
+    0x4D: 0b0001_0111,  # pwm frequency                        6.19
+    0x4E: 0b0000_0001,  # pwm frequency divide                 6.20
+    0x4F: 0b0000_0100,  # fan control lookup table hysteresis  6.21
+    # fan control lookup table                                 6.22
+    # -------------------------
+    0xBF: 0b0000_0000,  # averaging filter                     6.23
+}
+
+
 class Emc2101:
 
-    def __init__(self, i2c_bus: busio.I2C, i2c_address: int = 0x4c, fan_config: FanConfig = generic_pwm_fan):
+    def __init__(self, i2c_bus: busio.I2C, i2c_address: int = 0x4C, fan_config: FanConfig = generic_pwm_fan):
         # -- use Adafruit EMC2101 during development --
-        if i2c_bus is not None and i2c_address is not None:
-            self._emc2101 = adafruit_emc2101.EMC2101(i2c_bus=i2c_bus)
+        # if i2c_bus is not None and i2c_address is not None:
+        #     self._emc2101 = adafruit_emc2101.EMC2101(i2c_bus=i2c_bus)
         # -- our own internals --
-        self._i2c_device = I2cDevice(i2c_bus=i2c_bus, i2c_address=i2c_address)
-        self._duty_min = _convert_dutycycle_percentage2raw(fan_config.minimum_duty_cycle)
-        self._duty_max = _convert_dutycycle_percentage2raw(fan_config.maximum_duty_cycle)
-        self._pin_six = None  # will be initialize when needed
-        self._use_pwm = None  # will be initialize when needed
-        self._rpm_min = fan_config.minimum_rpm
-        self._rpm_max = fan_config.maximum_rpm
+        self._i2c_device   = I2cDevice(i2c_bus=i2c_bus, i2c_address=i2c_address)
+        self._duty_min     = _convert_dutycycle_percentage2raw(fan_config.minimum_duty_cycle)
+        self._duty_max     = _convert_dutycycle_percentage2raw(fan_config.maximum_duty_cycle)
+        self._pin_six      = None  # will be initialize when needed
+        self._control_mode = None  # will be initialize when needed
+        self._rpm_min      = fan_config.minimum_rpm
+        self._rpm_max      = fan_config.maximum_rpm
 
     def get_manufacturer_id(self) -> Optional[int]:
         """
@@ -136,7 +180,7 @@ class Emc2101:
         """
         cfg_register_value = self._i2c_device.read_register(0x03)
         if cfg_register_value & 0b0001_0000:
-            return RpmControlMode.DAC
+            return RpmControlMode.DC
         else:
             return RpmControlMode.PWM
 
@@ -251,8 +295,10 @@ class Emc2101:
                 return
         else:
             LH.debug("Lookup table is already disabled. Using fan setting register.")
-        # step 2) set new duty cycle (range: 0 <= x <= 64 ??)
+        # step 2) set new duty cycle (range: 0 <= x <= 63)
         self._i2c_device.write_register(0x4C, value)
+        # # step 3) restore
+        # self._i2c_device.write_register(0x4A, config_register & 0b0000_0000)
         if value_type == DutyCycleValue.PERCENTAGE:
             return _convert_dutycycle_raw2percentage(value)
         else:
@@ -274,27 +320,44 @@ class Emc2101:
         self._i2c_device.write_register(0x05, int(value))
 
     def get_sensor_temperature(self) -> float:
-        # 0x01 high byte
-        # 0x10 low byte
-        return math.nan
+        """
+        set external sensor temperature in °C
+        """
+        msb = self._i2c_device.read_register(0x01)  # 0x01 high byte
+        lsb = self._i2c_device.read_register(0x10)  # 0x10 low byte
+        return _convert_temperature_raw2value(msb, lsb)
 
-    def get_sensor_temperature_limit(self) -> float:
-        # External Temp High Limit
-        #   0x07 high byte
-        #   0x13 low byte
-        # External Temp Low Limit
-        #   0x08 high byte
-        #   0x14 low byte
-        return 60.0
+    def get_sensor_temperature_limit(self, limit_type: LimitType) -> float:
+        """
+        set upper/lower temperature alerting limit in °C
+        """
+        if limit_type == LimitType.LOWER:
+            msb = self._i2c_device.read_register(0x08)
+            lsb = self._i2c_device.read_register(0x14)
+            return _convert_temperature_raw2value(msb, lsb)
+        elif limit_type == LimitType.UPPER:
+            msb = self._i2c_device.read_register(0x07)
+            lsb = self._i2c_device.read_register(0x13)
+            return _convert_temperature_raw2value(msb, lsb)
+        else:
+            raise ValueError("invalid limit type")
 
-    def set_sensor_temperature_limit(self, value: float):
-        # External Temp High Limit
-        #   0x07 high byte
-        #   0x13 low byte
-        # External Temp Low Limit
-        #   0x08 high byte
-        #   0x14 low byte
-        pass
+    def set_sensor_temperature_limit(self, value: float, limit_type: LimitType):
+        """
+        set upper/lower temperature alerting limit in °C
+        """
+        if value < 0 or value > 85:
+            raise ValueError("temperature limit out of range (0 < =x <= 85°C)")
+        (msb, lsb) = _convert_temperature_value2raw(value)
+        if limit_type == LimitType.LOWER:
+            self._i2c_device.write_register(0x08, msb)
+            self._i2c_device.write_register(0x14, lsb)
+        elif limit_type == LimitType.UPPER:
+            self._i2c_device.write_register(0x07, msb)
+            self._i2c_device.write_register(0x13, lsb)
+            pass
+        else:
+            raise ValueError("invalid limit type")
 
     def update_lookup_table(self, values: Dict[int, int]):
         if len(values) > 8:
@@ -328,7 +391,7 @@ class Emc2101:
         rpm_cur = 0
         while not has_settled:
             time.sleep(1)
-            rpm_cur = self.get_current_rpm()
+            rpm_cur = self.get_rpm()
             if (rpm_ref/10) != (rpm_cur/10):  # RPM will never be exactly the same
                 LH.debug("not settled: ref=%i, cur=%i", rpm_ref, rpm_cur)
                 rpm_ref = rpm_cur
@@ -340,47 +403,21 @@ class Emc2101:
         for duty_cycle in range(30, -1, -5):
             self.set_dutycycle(duty_cycle)
             time.sleep(0.5)
-            rpm = self.get_current_rpm()
+            rpm = self.get_rpm()
             LH.debug("duty cycle: %2i rpm: %4i", duty_cycle, rpm)
             # TODO determine cut-off threshold was reached and set self._duty_min
         fan_config = FanConfig(minimum_duty_cycle=self._duty_min, maximum_duty_cycle=self._duty_max, minimum_rpm=self._rpm_min, maximum_rpm=self._rpm_max)
         return fan_config
 
+    def read_device_registers(self) -> dict[int, int]:
+        registers = {}
+        for register in DEFAULTS.keys():
+            registers[register] = value = self._i2c_device.read_register(register)
+        return registers
+
     def reset_device_registers(self):
         LH.debug("Resetting all device registers to their default values.")
-        defaults = {
-            #     value           purpose                             section
-            # -----------------------------------------------------------------
-            0x03: 0b0000_0000,  # configuration register               6.5
-            0x04: 0b0000_1000,  # conversion register                  6.6
-            # temperature limit registers                              6.7
-            0x05: 0b0100_0110,  # internal sensor
-            0x07: 0b0100_0110,  # external diode, high limit, MSB
-            0x08: 0b0000_0000,  # external diode, low limit,  MSB
-            0x13: 0b0000_0000,  # external diode, high limit, LSB
-            0x14: 0b0000_0000,  # external diode, low limit,  LSB
-            0x19: 0b0101_0101,  # critical temperature threshold
-            0x21: 0b0000_1010,  # critical temperature hysteresis
-            # -------------------------
-            0x0C: 0b0000_0000,  # external temperature (forced)        6.8
-            0x11: 0b0000_0000,  # scratchpad #1                        6.10
-            0x12: 0b0000_0000,  # scratchpad #2                        6.10
-            0x16: 0b1010_0100,  # alert mask                           6.11
-            0x17: 0b0001_0010,  # external ideality                    6.12
-            0x18: 0b0000_1000,  # beta compensation                    6.13
-            0x48: 0b1111_1111,  # tach limit, LSB                      6.15
-            0x49: 0b1111_1111,  # tach limit, MSB                      6.15
-            0x4A: 0b0010_0000,  # fan configuration                    6.16
-            0x4B: 0b0011_1111,  # fan spinup configuration             6.17
-            0x4C: 0b0000_0000,  # fan setting                          6.18
-            0x4D: 0b0001_0111,  # pwm frequency                        6.19
-            0x4E: 0b0000_0001,  # pwm frequency divide                 6.20
-            0x4F: 0b0000_0100,  # fan control lookup table hysteresis  6.21
-            # fan control lookup table                                 6.22
-            # -------------------------
-            0xBF: 0b0000_0000,  # averaging filter                     6.23
-        }
-        for register, value in defaults.items():
+        for register, value in DEFAULTS.items():
             self._i2c_device.write_register(register, value)
 
 
