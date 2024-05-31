@@ -28,8 +28,8 @@ class FanConfig:
 
 # provide reasonable default configurations for DC and PWM fans
 
-# probably a bad idea to feed less than 50% voltage (fan might fail to start properly)
+# probably a bad idea to provide less than 50% supply voltage (fan might fail to start properly)
 generic_dc_fan = FanConfig(rpm_control_mode=RpmControlMode.DC, minimum_duty_cycle=50, maximum_duty_cycle=100, minimum_rpm=100, maximum_rpm=2000)
 
-# some fans treat a duty cycle of less than 20% as 'no signal' and go full speed
+# some fans treat a duty cycle of less than 20% as 'no signal' and go full speed instead
 generic_pwm_fan = FanConfig(rpm_control_mode=RpmControlMode.PWM, minimum_duty_cycle=20, maximum_duty_cycle=100, minimum_rpm=100, maximum_rpm=2000)
