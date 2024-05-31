@@ -164,9 +164,11 @@ class TestUsingMockedDevice(unittest.TestCase):
         # -----------------------------------------------------------------
         self.assertEqual(computed, expected, f"Got unexpected sensor temperature limit '{computed}'.")
 
+    # control duty cycle using manual control
+
     def test_duty_cycle_read(self):
-        # TODO read from lookup table if lookup table is used
-        self.i2c_bus._set_rw_register(0x4C, 0x4C, 0x20)
+        self.i2c_bus._set_rw_register(0x4C, 0x4A, 0b0010_0000)  # enable manual control
+        self.i2c_bus._set_rw_register(0x4C, 0x4C, 0x20)         # 64 steps (0x00 = 0%, 0x3F = 100%)
         # -----------------------------------------------------------------
         computed = self.emc2101.get_dutycycle(value_type=DutyCycleValue.RAW_VALUE)
         expected = 32
@@ -190,3 +192,7 @@ class TestUsingMockedDevice(unittest.TestCase):
         self.assertEqual(computed, expected)
         self.assertTrue(self.i2c_bus._get_rw_register(0x4C, 0x4A) & 0b0010_0000)  # manual control is enabled
         self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x4C), 0x10)         # 64 steps (0x00 = 0%, 0x3F = 100%)
+
+    # control duty cycle using temperature sensor and lookup table
+
+    # TODO add tests for lookup table
