@@ -131,8 +131,8 @@ class TestUsingMockedDevice(unittest.TestCase):
         self.assertEqual(computed, expected, f"Got unexpected chip temperature limit '{computed}'.")
 
     def test_sensor_temperature(self):
-        self.i2c_bus._set_ro_register(0x4C, 0x01, 0x1B)  # external sensor temperature (decimal)
-        self.i2c_bus._set_ro_register(0x4C, 0x10, 0xE0)  # external sensor temperature (fraction)
+        self.i2c_bus._set_ro_register(0x4C, 0x01, 0x1B)         # external sensor temperature (decimal)
+        self.i2c_bus._set_ro_register(0x4C, 0x10, 0b1110_0000)  # external sensor temperature (fraction)
         # -----------------------------------------------------------------
         computed = self.emc2101.get_sensor_temperature()
         expected = 27.9
@@ -140,8 +140,8 @@ class TestUsingMockedDevice(unittest.TestCase):
         self.assertEqual(computed, expected, f"Got unexpected sensor temperature '{computed}'.")
 
     def test_sensor_temperature_limit_read_lower(self):
-        self.i2c_bus._set_rw_register(0x4C, 0x08, 0x12)  # external sensor low limit (MSB)
-        self.i2c_bus._set_rw_register(0x4C, 0x14, 0xE0)  # external sensor low limit (LSB)
+        self.i2c_bus._set_rw_register(0x4C, 0x08, 0x12)         # external sensor low limit (decimal)
+        self.i2c_bus._set_rw_register(0x4C, 0x14, 0b1110_0000)  # external sensor low limit (fraction)
         # -----------------------------------------------------------------
         computed = self.emc2101.get_sensor_temperature_limit(limit_type=LimitType.LOWER)
         expected = 18.9
@@ -158,8 +158,8 @@ class TestUsingMockedDevice(unittest.TestCase):
         self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x14), 0b1110_0000)
 
     def test_sensor_temperature_limit_read_upper(self):
-        self.i2c_bus._set_rw_register(0x4C, 0x07, 0x54)
-        self.i2c_bus._set_rw_register(0x4C, 0x13, 0b1110_0000)
+        self.i2c_bus._set_rw_register(0x4C, 0x07, 0x54)         # external sensor low limit (decimal)
+        self.i2c_bus._set_rw_register(0x4C, 0x13, 0b1110_0000)  # external sensor low limit (fraction)
         # -----------------------------------------------------------------
         computed = self.emc2101.get_sensor_temperature_limit(limit_type=LimitType.UPPER)
         expected = 84.9
@@ -188,21 +188,27 @@ class TestUsingMockedDevice(unittest.TestCase):
 
     def test_duty_cycle_write_percent(self):
         # -----------------------------------------------------------------
-        computed = self.emc2101.set_dutycycle(75)  # in percent
-        expected = 75                              # in percent
+        computed = self.emc2101.set_dutycycle(75)  # 0..100 percent
+        expected = 75                              # same unit as input
         # -----------------------------------------------------------------
         self.assertEqual(computed, expected)
         self.assertTrue(self.i2c_bus._get_rw_register(0x4C, 0x4A) & 0b0010_0000)  # manual control is enabled
         self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x4C), 0x2F)         # 64 steps (0x00 = 0%, 0x3F = 100%)
 
+    def test_duty_cycle_write_percent_oor(self):
+        self.assertRaises(ValueError, self.emc2101.set_dutycycle, 105)
+
     def test_duty_cycle_write_steps(self):
         # -----------------------------------------------------------------
-        computed = self.emc2101.set_dutycycle(16, value_type=DutyCycleValue.RAW_VALUE)  # steps
-        expected = 16                                                                   # steps
+        computed = self.emc2101.set_dutycycle(16, value_type=DutyCycleValue.RAW_VALUE)  # 0..63 steps
+        expected = 16                                                                   # same unit as input
         # -----------------------------------------------------------------
         self.assertEqual(computed, expected)
         self.assertTrue(self.i2c_bus._get_rw_register(0x4C, 0x4A) & 0b0010_0000)  # manual control is enabled
         self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x4C), 0x10)         # 64 steps (0x00 = 0%, 0x3F = 100%)
+
+    def test_duty_cycle_write_steps_oor(self):
+        self.assertRaises(ValueError, self.emc2101.set_dutycycle, 70, value_type=DutyCycleValue.RAW_VALUE)
 
     # control duty cycle using temperature sensor and lookup table
 

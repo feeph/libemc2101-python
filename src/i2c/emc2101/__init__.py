@@ -50,7 +50,7 @@ def _convert_dutycycle_percentage2raw(value: int) -> int:
     if value >= 0 and value <= 100:
         return round(value * 63 / 100)
     else:
-        raise ValueError("Percentage value must be in range 0 <= x <= 100!")
+        raise ValueError("Percentage value must be in range 0 ≤ x ≤ 100!")
 
 
 def _convert_dutycycle_raw2percentage(value: int) -> int:
@@ -62,7 +62,7 @@ def _convert_dutycycle_raw2percentage(value: int) -> int:
     if value >= 0 and value <= 63:
         return round(value * 100 / 63)
     else:
-        raise ValueError("Raw value must be in range 0 <= x <= 63!")
+        raise ValueError("Raw value must be in range 0 ≤ x ≤ 63!")
 
 
 def _convert_temperature_raw2value(msb: int, lsb:int) -> float:
@@ -98,6 +98,23 @@ def _convert_temperature_value2raw(value: float) -> tuple[int, int]:
         lsb |= 0b0010_0000
         fraction -= 0.15
     return (msb, lsb)
+
+
+def _verify_value_range(value: int, value_range: tuple[int, int]):
+    lower_limit = value_range[0]
+    upper_limit = value_range[1]
+    if value < lower_limit or value > upper_limit:
+        raise ValueError(f"provided value {value} is out of range ({lower_limit} ≤ x ≤ {upper_limit})")
+
+
+def _clamp_to_range(value: int, value_range: tuple[int, int]) -> int:
+    lower_limit = value_range[0]
+    upper_limit = value_range[1]
+    if value < lower_limit:
+        value = lower_limit
+    if value > upper_limit:
+        value = upper_limit
+    return value
 
 
 DEFAULTS = {
@@ -267,20 +284,22 @@ class Emc2101:
             return value
 
     # the PWM driver included in the EMC2101 has, at most, 64 steps equalling ~1.5% resolution
-    def set_dutycycle(self, value: int, disable_lut: bool = False, value_type: DutyCycleValue = DutyCycleValue.PERCENTAGE) -> int | None:
+    def set_dutycycle(self, value: int, value_type: DutyCycleValue = DutyCycleValue.PERCENTAGE, disable_lut: bool = False) -> int | None:
         """
         set the fan duty cycle
          - clamp to minimum/maximum as defined by the fan configuration
          - returns the effective, clamped value or 'None' if no value was set
         """
         if value_type == DutyCycleValue.PERCENTAGE:
+            _verify_value_range(value, (0, 100))
             LH.debug("Converting percentage value to internal value.")
             value = _convert_dutycycle_percentage2raw(value)
-        # clamp provide value to desired min/max
-        if value < self._duty_min:
-            value = self._duty_min
-        if value > self._duty_max:
-            value = self._duty_max
+        elif value_type == DutyCycleValue.RAW_VALUE:
+            _verify_value_range(value, (0, 63))
+        else:
+            raise ValueError("unsupported value type")
+        # clamp provided value to desired minimum/maximum
+        value = _clamp_to_range(value, (self._duty_min, self._duty_max))
         # step 1) change programming mode and enable updates
         #   0b..0._.... = use lookup table
         #   0b..1._.... = use manual control
@@ -295,7 +314,7 @@ class Emc2101:
                 return
         else:
             LH.debug("Lookup table is already disabled. Using fan setting register.")
-        # step 2) set new duty cycle (range: 0 <= x <= 63)
+        # step 2) set new duty cycle (range: 0 ≤ x ≤ 63)
         self._i2c_device.write_register(0x4C, value)
         # # step 3) restore
         # self._i2c_device.write_register(0x4A, config_register & 0b0000_0000)
@@ -350,7 +369,7 @@ class Emc2101:
         nearest available step. The clamped value is returned to the caller.
         """
         if value < 0 or value > 85:
-            raise ValueError("temperature limit out of range (0 < =x <= 85°C)")
+            raise ValueError("temperature limit out of range (0 ≤ x ≤ 85°C)")
         (msb, lsb) = _convert_temperature_value2raw(value)
         if limit_type == LimitType.LOWER:
             reg_msb = 0x08
