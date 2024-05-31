@@ -322,7 +322,8 @@ class Emc2101:
             LH.warning("Pin six is not configured for tacho mode. Please enable tacho mode.")
             return
         # get tacho readings
-        tach_lsb = self._i2c_device.read_register(0x46)  # TACH Reading Low Byte
+        # (the order of is important; see datasheet section 6.1 for details)
+        tach_lsb = self._i2c_device.read_register(0x46)  # TACH Reading Low Byte, must be read first!
         tach_msb = self._i2c_device.read_register(0x47)  # TACH Reading High Byte
         LH.debug("tach readings: LSB=0x%02X MSB=0x%02X", tach_lsb, tach_msb)
         return _convert_tach2rpm(msb=tach_msb, lsb=tach_lsb)
@@ -452,7 +453,9 @@ class Emc2101:
         """
         set external sensor temperature in °C
         """
-        msb = self._i2c_device.read_register(0x01)  # 0x01 high byte
+        # read external temperature
+        # (the order is important; see datasheet section 6.1 for details)
+        msb = self._i2c_device.read_register(0x01)  # 0x01 high byte, must be read first!
         lsb = self._i2c_device.read_register(0x10)  # 0x10 low byte
         return _convert_temperature_raw2value(msb, lsb)
 
