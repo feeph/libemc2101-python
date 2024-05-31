@@ -401,15 +401,34 @@ class Emc2101:
     def get_maximum_dutycycle(self) -> int:
         return _convert_dutycycle_raw2percentage(self._duty_max)
 
-    def update_lookup_table(self, values: Dict[int, int]):
-        if len(values) > 8:
-            raise ValueError("Temperature lookup table must have at most 8 entries!")
-        # TODO send I²C command to update the lookup table
+    def update_lookup_table(self, values: Dict[int, int], value_type: DutyCycleValue = DutyCycleValue.PERCENTAGE):
+        """
+        populate the lookup table with the provided values and
+        sets all unused values to zero
+        """
+        _verify_lut_table(values, value_type=value_type)
         # 0x50..0x5f (8 x 2 registers; temp->duty)
+        offset = 0
+        # TODO do we have to switch to manual mode to be able to update?
+        # set provided value
+        for temp, dutycycle in values.items():
+            if value_type == DutyCycleValue.PERCENTAGE:
+                value = _convert_dutycycle_percentage2raw(dutycycle)
+            elif value_type == DutyCycleValue.RAW_VALUE:
+                value = dutycycle
+            else:
+                raise ValueError("unknown value type")
+            self._i2c_device.write_register(0x50 + offset, temp)
+            self._i2c_device.write_register(0x51 + offset, value)
+            offset += 2
+        # fill remaining slots
+        for offset in range(offset, 16, 2):
+            self._i2c_device.write_register(0x50 + offset, 0x00)
+            self._i2c_device.write_register(0x51 + offset, 0x00)
 
-    def delete_lookup_table(self):
-        buf = b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
-        return self._i2c_device.write_register(0x50, 16, buf)
+    def reset_lookup_table(self):
+        # trigger update with an empty lookup table
+        self.update_lookup_table(values={})
 
     # ---------------------------------------------------------------------
     # temperature measurements
@@ -642,3 +661,23 @@ def _configure_minimum_rpm(i2c_device: I2cDevice, minimum_rpm: int):
     (msb, lsb) = _convert_rpm2tach(minimum_rpm)
     i2c_device.write_register(0x48, lsb)  # TACH Limit Low Byte
     i2c_device.write_register(0x49, msb)  # TACH Limit High Byte
+
+
+def _verify_lut_table(values: Dict[int, int], value_type: DutyCycleValue):
+    if len(values) > 8:
+        raise ValueError("too many entries in lookup table (max: 8)")
+    temp_min = 0
+    temp_max = 100
+    if value_type == DutyCycleValue.PERCENTAGE:
+        speed_min = 0
+        speed_max = 100
+    elif value_type == DutyCycleValue.RAW_VALUE:
+        speed_min = 0
+        speed_max = 63
+    else:
+        raise ValueError("unknown value type")
+    for temp, speed in values.items():
+        if not temp_min <= temp <= temp_max:
+            raise ValueError("temperature is out of range")
+        if not speed_min <= speed <= speed_max:
+            raise ValueError("speed is out of range")

@@ -174,7 +174,121 @@ class TestUsingMockedDevice(unittest.TestCase):
 
     # control duty cycle using temperature sensor and lookup table
 
-    # TODO add tests for lookup table
+    def test_update_lookup_table_empty(self):
+        values = {
+        }
+        # -----------------------------------------------------------------
+        self.emc2101.update_lookup_table(values=values, value_type=DutyCycleValue.RAW_VALUE)
+        # -----------------------------------------------------------------
+        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x50), 0)
+        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x51), 0x00)
+        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x52), 0)
+        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x53), 0x00)
+        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x54), 0)
+        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x55), 0x00)
+        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x56), 0)
+        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x57), 0x00)
+        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x58), 0)
+        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x59), 0x00)
+        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x5A), 0)
+        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x5B), 0x00)
+        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x5C), 0)
+        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x5D), 0x00)
+        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x5E), 0)
+        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x5F), 0x00)
+
+    def test_update_lookup_table_partial(self):
+        # there's nothing specific decimal or hex about these values,
+        # using different number systems simply to make it easier to
+        # see what's coming from where
+        values = {
+            16: 0x15,  # temp+speed #1
+            24: 0x19,  # temp+speed #2
+            # the remaining 6 slots remain unused
+        }
+        # -----------------------------------------------------------------
+        self.emc2101.update_lookup_table(values=values, value_type=DutyCycleValue.RAW_VALUE)
+        # -----------------------------------------------------------------
+        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x50), 16)
+        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x51), 0x15)
+        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x52), 24)
+        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x53), 0x19)
+        for offset in range(4, 16):
+            self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x50 + offset), 0x00)
+
+    def test_update_lookup_table_full(self):
+        # there's nothing specific decimal or hex about these values,
+        # using different number systems simply to make it easier to
+        # see what's coming from where
+        values = {
+            16: 0x15,  # temp+speed #1
+            24: 0x19,  # temp+speed #2
+            32: 0x1D,  # temp+speed #3
+            40: 0x21,  # temp+speed #4
+            48: 0x25,  # temp+speed #5
+            56: 0x20,  # temp+speed #6
+            64: 0x2D,  # temp+speed #7
+            72: 0x31,  # temp+speed #8
+        }
+        # -----------------------------------------------------------------
+        self.emc2101.update_lookup_table(values=values, value_type=DutyCycleValue.RAW_VALUE)
+        # -----------------------------------------------------------------
+        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x50), 16)
+        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x51), 0x15)
+        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x52), 24)
+        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x53), 0x19)
+        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x54), 32)
+        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x55), 0x1D)
+        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x56), 40)
+        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x57), 0x21)
+        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x58), 48)
+        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x59), 0x25)
+        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x5A), 56)
+        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x5B), 0x20)
+        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x5C), 64)
+        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x5D), 0x2D)
+        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x5E), 72)
+        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x5F), 0x31)
+
+    def test_update_lookup_table_toomany(self):
+        # there's nothing specific decimal or hex about these values,
+        # using different number systems simply to make it easier to
+        # see what's coming from where
+        values = {
+            16: 0x15,  # temp+speed #1
+            24: 0x19,  # temp+speed #2
+            32: 0x1D,  # temp+speed #3
+            40: 0x21,  # temp+speed #4
+            48: 0x25,  # temp+speed #5
+            56: 0x20,  # temp+speed #6
+            64: 0x2D,  # temp+speed #7
+            72: 0x31,  # temp+speed #8
+            80: 0x35,  # there is no slot #9
+        }
+        # -----------------------------------------------------------------
+        # -----------------------------------------------------------------
+        self.assertRaises(ValueError, self.emc2101.update_lookup_table, values=values, value_type=DutyCycleValue.RAW_VALUE)
+
+
+    def test_reset_lookup(self):
+        # populate with some non-zero values
+        values = {
+            20: 0x10,  # temp+speed #1
+            24: 0x11,  # temp+speed #2
+            32: 0x12,  # temp+speed #3
+            40: 0x13,  # temp+speed #4
+            48: 0x14,  # temp+speed #5
+            56: 0x15,  # temp+speed #6
+            64: 0x16,  # temp+speed #7
+            72: 0x17,  # temp+speed #8
+        }
+        self.emc2101.update_lookup_table(values=values, value_type=DutyCycleValue.RAW_VALUE)
+        # -----------------------------------------------------------------
+        self.emc2101.reset_lookup_table()
+        # -----------------------------------------------------------------
+        for offset in range(0, 16):
+            self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x50 + offset), 0x00)
+
 
     # ---------------------------------------------------------------------
     # measure temperatures
