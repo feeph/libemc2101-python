@@ -10,6 +10,7 @@ import board
 import busio
 import i2c.emc2101
 
+from i2c.emc2101 import PinSixMode
 
 @unittest.skipUnless(os.environ.get('TEST_EMC2101_CHIP', 'n') == 'y', "Skipping physical device test.")
 class TestUsingPhysicalDevice(unittest.TestCase):
@@ -19,7 +20,7 @@ class TestUsingPhysicalDevice(unittest.TestCase):
         i2c_sda_pin = os.environ.get('I2C_SDA_PIN', board.SDA)
         emc2101_address = os.environ.get('EMC2101_ADDRESS', 0x4C)
         i2c_bus = busio.I2C(scl=i2c_scl_pin, sda=i2c_sda_pin)
-        self.emc2101 = i2c.emc2101.Emc2101(i2c_bus=i2c_bus, i2c_address=emc2101_address)
+        self.emc2101 = i2c.emc2101.Emc2101(i2c_bus=i2c_bus, i2c_address=emc2101_address, pin_six_mode=PinSixMode.TACHO)
 
     def tearDown(self):
         # nothing to do

@@ -6,7 +6,7 @@ import unittest
 
 import i2c.emc2101
 
-from i2c.emc2101 import DutyCycleValue, LimitType
+from i2c.emc2101 import DutyCycleValue, FanConfig, LimitType, PinSixMode, RpmControlMode
 
 
 class SimulatedI2cBus:
@@ -77,7 +77,8 @@ class TestUsingMockedDevice(unittest.TestCase):
         # add readonly registers
         self.i2c_bus = SimulatedI2cBus(state={0x4C: {"rw": rw_registers, "ro": ro_registers}})
         # instantiate an object with a simulated I²C bus
-        self.emc2101 = i2c.emc2101.Emc2101(i2c_bus=self.i2c_bus)
+        fan_config = FanConfig(rpm_control_mode=RpmControlMode.PWM, minimum_duty_cycle=20, maximum_duty_cycle=100, minimum_rpm=100, maximum_rpm=2000)
+        self.emc2101 = i2c.emc2101.Emc2101(i2c_bus=self.i2c_bus, fan_config=fan_config, pin_six_mode=PinSixMode.TACHO)
 
     def tearDown(self):
         # nothing to do

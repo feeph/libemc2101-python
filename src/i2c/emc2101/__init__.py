@@ -6,13 +6,11 @@
 # Datasheet: https://ww1.microchip.com/downloads/en/DeviceDoc/2101.pdf
 
 import logging
-import math
 import time
 
 from enum import Enum
 from typing import Dict, Optional
 
-import adafruit_emc2101
 import busio
 
 from i2c.i2c_device import I2cDevice
@@ -153,16 +151,12 @@ DEFAULTS = {
 
 class Emc2101:
 
-    def __init__(self, i2c_bus: busio.I2C, i2c_address: int = 0x4C, fan_config: FanConfig = generic_pwm_fan):
-        # -- use Adafruit EMC2101 during development --
-        # if i2c_bus is not None and i2c_address is not None:
-        #     self._emc2101 = adafruit_emc2101.EMC2101(i2c_bus=i2c_bus)
-        # -- our own internals --
+    def __init__(self, i2c_bus: busio.I2C, i2c_address: int = 0x4C, fan_config: FanConfig = generic_pwm_fan, pin_six_mode: PinSixMode = PinSixMode.ALERT):
         self._i2c_device   = I2cDevice(i2c_bus=i2c_bus, i2c_address=i2c_address)
+        self._control_mode = _configure_control_mode(self._i2c_device, fan_config.rpm_control_mode)
+        self._pin_six_mode = _configure_pin_six_mode(self._i2c_device, pin_six_mode)
         self._duty_min     = _convert_dutycycle_percentage2raw(fan_config.minimum_duty_cycle)
         self._duty_max     = _convert_dutycycle_percentage2raw(fan_config.maximum_duty_cycle)
-        self._pin_six      = None  # will be initialize when needed
-        self._control_mode = None  # will be initialize when needed
         self._rpm_min      = fan_config.minimum_rpm
         self._rpm_max      = fan_config.maximum_rpm
 
@@ -188,8 +182,7 @@ class Emc2101:
         must select between /ALERT and TACHO
         """
         LH.debug("Configuring pin 6 as tacho signal.")
-        cfg_register_value = self._i2c_device.read_register(0x03)
-        self._i2c_device.write_register(0x03, cfg_register_value | 0b0000_0100)
+        self._pin_six = _configure_pin_six_mode(self._i2c_device, PinSixMode.TACHO)
 
     def get_rpm_control_mode(self) -> RpmControlMode:
         """
@@ -205,26 +198,11 @@ class Emc2101:
         """
         choose between DAC or PWM to control fan speed
         """
-        if mode == RpmControlMode.DAC:
-            LH.debug("Using supply voltage to control fan speed.")
-            cfg_register_value = self._i2c_device.read_register(0x03)
-            self._i2c_device.write_register(0x03, cfg_register_value | 0b0001_0000)
-        elif mode == RpmControlMode.PWM:
-            LH.debug("Using PWM signal to control fan speed.")
-            cfg_register_value = self._i2c_device.read_register(0x03)
-            self._i2c_device.write_register(0x03, cfg_register_value & 0b1110_1111)
-        else:
-            raise ValueError("Usage error. Please provide correct input value.")
+        self._control_mode = _configure_control_mode(self._i2c_device, mode)
 
     def get_rpm(self) -> int | None:
-        # initialize if needed
-        if self._pin_six is None:
-            if self._i2c_device.read_register(0x03) & 0b0000_0100:
-                self._pin_six = PinSixMode.TACHO
-            else:
-                self._pin_six = PinSixMode.ALERT
         # step 1) verify tacho mode is configured
-        if self._pin_six != PinSixMode.TACHO:
+        if self._pin_six_mode != PinSixMode.TACHO:
             LH.warning("Pin six is not configured for tacho mode. Please enable tacho mode.")
             return
         # step 2) get tach readings
@@ -462,3 +440,31 @@ def parse_fanconfig_register(value: int) -> dict[str, str]:
         # the highest bit is unused
     }
     return config
+
+def _configure_control_mode(i2c_device: I2cDevice, control_mode: RpmControlMode) -> RpmControlMode:
+    if control_mode == RpmControlMode.DC:
+        # set 0x03.4 to 1
+        cfg_register_value = i2c_device.read_register(0x03)
+        i2c_device.write_register(0x03, cfg_register_value | 0b0001_0000)
+        return RpmControlMode.DC
+    elif control_mode == RpmControlMode.PWM:
+        # set 0x03.4 to 0
+        cfg_register_value = i2c_device.read_register(0x03)
+        i2c_device.write_register(0x03, cfg_register_value & 0b1110_1111)
+        return RpmControlMode.PWM
+    else:
+        raise NotImplementedError("unsupported RPM control mode")
+
+def _configure_pin_six_mode(i2c_device: I2cDevice, pin_six_mode: PinSixMode) -> PinSixMode:
+    if pin_six_mode == PinSixMode.ALERT:
+        # set 0x03.2 to 0
+        cfg_register_value = i2c_device.read_register(0x03)
+        i2c_device.write_register(0x03, cfg_register_value & 0b1111_1011)
+        return PinSixMode.ALERT
+    elif pin_six_mode == PinSixMode.TACHO:
+        # set 0x03.2 to 1
+        cfg_register_value = i2c_device.read_register(0x03)
+        i2c_device.write_register(0x03, cfg_register_value | 0b0000_0100)
+        return PinSixMode.TACHO
+    else:
+        raise NotImplementedError("unsupported pin 6 mode")
