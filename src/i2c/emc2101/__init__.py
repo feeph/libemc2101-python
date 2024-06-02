@@ -358,25 +358,6 @@ class Emc2101:
         #     ^------- configure lookup table (0 = on, 1 = off)
         self._i2c_device.write_register(0x4A, value & 0xFF)
 
-    # from Noctua datasheet
-    # As specified by Intel (c.f. “4-Wire Pulse Width Modulation (PWM) Controlled Fans”, Intel
-    # Corporation September 2005, revision 1.3), the square wave type PWM signal has to be
-    # supplied to the PWM input (pin 4) of the fan and must conform to the
-    # following specifications:
-    # • Target frequency: 25kHz, acceptable range 21kHz to 28kHz
-    # • Maximum voltage for logic low: VIL=0,8V
-    # • Absolute maximum current sourced: Imax=5mA (short circuit current)
-    # • Absolute maximum voltage level: VMax=5,25V (open circuit voltage)
-    # • Allowed duty-cycle range 0% to 100%
-
-    # according to appendix a in datasheet the following settings should be used:
-    #
-    # PWM frequency  PWM_F   resolution   acceptable
-    #  30.0kHz        0x06    8.33%
-    #  25.7kHz        0x07    7.14%         yes
-    #  22.5kHz        0x08    6.25%         yes, best resolution
-    #  20.0kHz        0x09    5.56%
-
     def get_dutycycle(self, value_type: DutyCycleValue = DutyCycleValue.PERCENTAGE) -> int:
         value = self._i2c_device.read_register(0x4C)
         LH.debug("get_dutycycle(): raw value %i (0x%0x)", value, value)
@@ -385,13 +366,6 @@ class Emc2101:
         else:
             return value
 
-    # the PWM driver included in the EMC2101 has, at most, 64 steps equalling ~1.5% resolution
-    # related: https://github.com/adafruit/Adafruit_CircuitPython_EMC2101/issues/19
-    #   The manual_fan_speed property is using MAX_LUT_SPEED as a divisor instead of PWM_F * 2.
-    #   This means that the actual PWM duty cycle reaches 100% at emc.fan_speed = PWM_F * 2 / MAX_LUT_SPEED
-    #   which is about 73%, matching my graph. The divisor in the manual_fan_speed functions should be PWM_F
-    #   * 2 when running in PWM mode and 64 in DAC mode. This should also cause more trouble when setting the
-    #   pwm_frequency property, although I haven't tried that yet.
     def set_dutycycle(self, value: int, value_type: DutyCycleValue = DutyCycleValue.PERCENTAGE, disable_lut: bool = False) -> int | None:
         """
         set the fan duty cycle
