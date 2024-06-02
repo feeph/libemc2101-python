@@ -11,8 +11,9 @@ class RpmControlMode(Enum):
 # basically a dataclass/attrs, but attrs are not available on CircuitPython
 class FanConfig:
 
-    def __init__(self, rpm_control_mode: RpmControlMode, minimum_duty_cycle: int, maximum_duty_cycle: int, minimum_rpm: int, maximum_rpm: int):
+    def __init__(self, rpm_control_mode: RpmControlMode, minimum_duty_cycle: int, maximum_duty_cycle: int, minimum_rpm: int, maximum_rpm: int, pwm_frequency: int = 22500):
         self.rpm_control_mode = rpm_control_mode
+        self.pwm_frequency    = pwm_frequency
         if minimum_duty_cycle > maximum_duty_cycle:
             raise ValueError("minimum duty cycle must be smaller than maximum duty cycle")
         if minimum_duty_cycle >= 0:

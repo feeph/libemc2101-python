@@ -6,6 +6,7 @@
 # Datasheet: https://ww1.microchip.com/downloads/en/DeviceDoc/2101.pdf
 
 import logging
+import math
 import time
 
 from enum import Enum
@@ -245,6 +246,15 @@ class Emc2101:
         self._pin_six_mode = _configure_pin_six_mode(self._i2c_device, device_config.pin_six_mode)
         self._duty_min     = _convert_dutycycle_percentage2raw(fan_config.minimum_duty_cycle)
         self._duty_max     = _convert_dutycycle_percentage2raw(fan_config.maximum_duty_cycle)
+        # calculate and configure PWM_D and PWM_F settings
+        (pwm_d, pwm_f) = calculate_pwm_factors(pwm_frequency=fan_config.pwm_frequency)
+        LH.debug("PWM frequency: %dHz -> PWM_D: %i PWM_F: %i", fan_config.pwm_frequency, pwm_d, pwm_f)
+        self._i2c_device.write_register(0x4D, pwm_f)
+        self._i2c_device.write_register(0x4E, pwm_d)
+        self._pwm_steps = pwm_f * 2
+        # override CLK_SEL and use Frequency Divide Register (PWM_F) to determine base frequency
+        fancfg_register = self._i2c_device.read_register(0x4A)
+        self._i2c_device.write_register(0x4A, fancfg_register | 0b0000_0100)
         # configure lowest expected RPM value
         _configure_minimum_rpm(self._i2c_device, minimum_rpm=fan_config.minimum_rpm)
 
@@ -348,14 +358,40 @@ class Emc2101:
         #     ^------- configure lookup table (0 = on, 1 = off)
         self._i2c_device.write_register(0x4A, value & 0xFF)
 
+    # from Noctua datasheet
+    # As specified by Intel (c.f. “4-Wire Pulse Width Modulation (PWM) Controlled Fans”, Intel
+    # Corporation September 2005, revision 1.3), the square wave type PWM signal has to be
+    # supplied to the PWM input (pin 4) of the fan and must conform to the
+    # following specifications:
+    # • Target frequency: 25kHz, acceptable range 21kHz to 28kHz
+    # • Maximum voltage for logic low: VIL=0,8V
+    # • Absolute maximum current sourced: Imax=5mA (short circuit current)
+    # • Absolute maximum voltage level: VMax=5,25V (open circuit voltage)
+    # • Allowed duty-cycle range 0% to 100%
+
+    # according to appendix a in datasheet the following settings should be used:
+    #
+    # PWM frequency  PWM_F   resolution   acceptable
+    #  30.0kHz        0x06    8.33%
+    #  25.7kHz        0x07    7.14%         yes
+    #  22.5kHz        0x08    6.25%         yes, best resolution
+    #  20.0kHz        0x09    5.56%
+
     def get_dutycycle(self, value_type: DutyCycleValue = DutyCycleValue.PERCENTAGE) -> int:
         value = self._i2c_device.read_register(0x4C)
+        LH.debug("get_dutycycle(): raw value %i (0x%0x)", value, value)
         if value_type == DutyCycleValue.PERCENTAGE:
             return _convert_dutycycle_raw2percentage(value)
         else:
             return value
 
     # the PWM driver included in the EMC2101 has, at most, 64 steps equalling ~1.5% resolution
+    # related: https://github.com/adafruit/Adafruit_CircuitPython_EMC2101/issues/19
+    #   The manual_fan_speed property is using MAX_LUT_SPEED as a divisor instead of PWM_F * 2.
+    #   This means that the actual PWM duty cycle reaches 100% at emc.fan_speed = PWM_F * 2 / MAX_LUT_SPEED
+    #   which is about 73%, matching my graph. The divisor in the manual_fan_speed functions should be PWM_F
+    #   * 2 when running in PWM mode and 64 in DAC mode. This should also cause more trouble when setting the
+    #   pwm_frequency property, although I haven't tried that yet.
     def set_dutycycle(self, value: int, value_type: DutyCycleValue = DutyCycleValue.PERCENTAGE, disable_lut: bool = False) -> int | None:
         """
         set the fan duty cycle
@@ -367,7 +403,7 @@ class Emc2101:
             LH.debug("Converting percentage value to internal value.")
             value = _convert_dutycycle_percentage2raw(value)
         elif value_type == DutyCycleValue.RAW_VALUE:
-            _verify_value_range(value, (0, 63))
+            _verify_value_range(value, (0, self._pwm_steps))
         else:
             raise ValueError("unsupported value type")
         # clamp provided value to desired minimum/maximum
@@ -387,6 +423,7 @@ class Emc2101:
         else:
             LH.debug("Lookup table is already disabled. Using fan setting register.")
         # step 2) set new duty cycle (range: 0 ≤ x ≤ 63)
+        LH.debug("set_dutycycle(): raw value %i (0x%0x)", value, value)
         self._i2c_device.write_register(0x4C, value)
         # # step 3) restore
         # self._i2c_device.write_register(0x4A, config_register & 0b0000_0000)
@@ -617,6 +654,29 @@ def parse_fanconfig_register(value: int) -> dict[str, str]:
         # the highest bit is unused
     }
     return config
+
+
+def calculate_pwm_frequency(pwm_f: int, pwm_d: int) -> float:
+    """
+    calculate PWM frequency for provided PWM_D and PWM_F
+    """
+    pwm_frequency = 360000/(2*pwm_f*pwm_d)
+    return pwm_frequency
+
+
+def calculate_pwm_factors(pwm_frequency: int) -> tuple[int, int]:
+    """
+    calculate PWM_D and PWM_F for provided frequency
+     - this function minimizes PWM_D to allow for maximum resolution (PWM_F)
+     - PWM_F maxes out at 31 (0x1F)
+    """
+    if 0 <= pwm_frequency <= 180000:
+        value1 = 360000/(2*pwm_frequency)
+        pwm_d = math.ceil(value1 / 31)
+        pwm_f = round(value1 / pwm_d)
+        return (pwm_d, pwm_f)
+    else:
+        raise ValueError("provided frequency is out of range")
 
 
 def _configure_control_mode(i2c_device: I2cDevice, control_mode: RpmControlMode) -> RpmControlMode:
