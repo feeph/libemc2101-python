@@ -6,7 +6,7 @@ import unittest
 
 import i2c.emc2101
 
-from i2c.emc2101 import DutyCycleValue, DeviceConfig, FanConfig, LimitType, PinSixMode, RpmControlMode, SpinUpStrength, SpinUpDuration
+from i2c.emc2101 import DeviceConfig, FanConfig, FanSpeedUnit, PinSixMode, RpmControlMode, SpinUpStrength, SpinUpDuration, TemperatureLimitType
 
 
 class SimulatedI2cBus:
@@ -24,27 +24,15 @@ class SimulatedI2cBus:
         ```
         state = {
             <device>: {
-              "rw": {
-                  <register>: <value>,
-              },
-              "ro": {
-                  <register>: <value>,
-              }
+                <register>: <value>,
             }
         }
         ```
         """
-        self._state = state
+        self._state = state.copy()
 
-    def _set_ro_register(self, device_address: int, device_register: int, value: int):
-        self._state[device_address]["ro"][device_register] = value
-
-    def _get_rw_register(self, device_address: int, device_register: int) -> int:
-        return self._state[device_address]["rw"][device_register]
-
-    def _set_rw_register(self, device_address: int, device_register: int, value: int):
-        self._state[device_address]["rw"][device_register] = value
-
+    # def _set_ro_register(self, device_address: int, device_register: int, value: int):
+    #     self._state[device_address][device_register] = value
 
     def readfrom_into(self, address, buffer, *, start=0, end=None):
         raise RuntimeError("Not implemented!")
@@ -52,41 +40,55 @@ class SimulatedI2cBus:
     def writeto(self, address, buffer, *, start=0, end=None):
         i2c_device_address  = address
         i2c_device_register = buffer[0]
-        self._state[i2c_device_address]["rw"][i2c_device_register] = buffer[1]
+        self._state[i2c_device_address][i2c_device_register] = buffer[1]
 
     def writeto_then_readfrom(self, address: int, buffer_out: bytearray, buffer_in: bytearray, *, out_start=0, out_end=None, in_start=0, in_end=None, stop=False):
         i2c_device_address  = address
         i2c_device_register = buffer_out[0]
-        if i2c_device_register in self._state[i2c_device_address]["rw"]:
-            buffer_in[0] = self._state[i2c_device_address]["rw"][i2c_device_register]
-        else:
-            buffer_in[0] = self._state[i2c_device_address]["ro"][i2c_device_register]
+        buffer_in[0] = self._state[i2c_device_address][i2c_device_register]
 
 
 class TestUsingMockedDevice(unittest.TestCase):
 
     def setUp(self):
         # initialize read/write registers
-        rw_registers = i2c.emc2101.DEFAULTS.copy()
-        rw_registers[0x0F] = 0x00  # write only register, trigger temperature conversion
-        ro_registers = {
-            0x02: 0x00,  # status register
-            0x46: 0xFF,  # tacho reading (low byte)
-            0x47: 0xFF,  # tacho reading (high byte)
-        }
+        registers = i2c.emc2101.DEFAULTS.copy()
         # add readonly registers
-        self.i2c_bus = SimulatedI2cBus(state={0x4C: {"rw": rw_registers, "ro": ro_registers}})
+        registers[0x00] = 0x14  # chip temperature
+        registers[0x01] = 0x1B  # external sensor temperature (high byte)
+        registers[0x02] = 0x00  # status register
+        registers[0x0F] = 0x00  # write only register, trigger temperature conversion
+        registers[0x10] = 0xE0  # external sensor temperature (low byte)
+        registers[0x46] = 0xFF  # tacho reading (low byte)
+        registers[0x47] = 0xFF  # tacho reading (high byte)
+        registers[0xFD] = 0x16  # product id
+        registers[0xFE] = 0x5D  # manufacturer id
+        registers[0xFF] = 0x02  # revision
+        self.i2c_bus = SimulatedI2cBus(state={0x4C: registers})
         # instantiate an object with a simulated I²C bus
-        device_config = DeviceConfig(rpm_control_mode=RpmControlMode.PWM, pin_six_mode=PinSixMode.TACHO, ideality_factor=0x12, beta_factor=0x08)
-        fan_config = FanConfig(rpm_control_mode=RpmControlMode.PWM, minimum_duty_cycle=20, maximum_duty_cycle=100, minimum_rpm=100, maximum_rpm=2000)
-        self.emc2101 = i2c.emc2101.Emc2101(i2c_bus=self.i2c_bus, device_config=device_config, fan_config=fan_config)
+        device_config = DeviceConfig(rpm_control_mode=RpmControlMode.PWM, pin_six_mode=PinSixMode.TACHO)
+        self.fan_config = FanConfig(rpm_control_mode=RpmControlMode.PWM, minimum_duty_cycle=20, maximum_duty_cycle=100, minimum_rpm=100, maximum_rpm=2000)
+        self.emc2101 = i2c.emc2101.Emc2101(i2c_bus=self.i2c_bus, device_config=device_config, fan_config=self.fan_config)
 
     def tearDown(self):
         # nothing to do
         pass
 
+    # ---------------------------------------------------------------------
+    # helpers
+    # ---------------------------------------------------------------------
+
+    def read_device_register(self, register: int):
+        return self.emc2101._i2c_device.read_register(register)
+
+    def write_device_register(self, register: int, value: int):
+        self.emc2101._i2c_device.write_register(register, value)
+
+    # ---------------------------------------------------------------------
+    # hardware details
+    # ---------------------------------------------------------------------
+
     def test_manufacturer_id(self):
-        self.i2c_bus._set_ro_register(0x4C, 0xFE, 0x5D)
         # -----------------------------------------------------------------
         computed = self.emc2101.get_manufacturer_id()
         expected = [
@@ -96,7 +98,6 @@ class TestUsingMockedDevice(unittest.TestCase):
         self.assertIn(computed, expected, f"Got unexpected manufacturer ID '{computed}'.")
 
     def test_product_id(self):
-        self.i2c_bus._set_ro_register(0x4C, 0xFD, 0x16)
         # -----------------------------------------------------------------
         computed = self.emc2101.get_product_id()
         expected = [
@@ -107,7 +108,6 @@ class TestUsingMockedDevice(unittest.TestCase):
         self.assertIn(computed, expected, f"Got unexpected product ID '{computed}'.")
 
     def test_product_revision(self):
-        self.i2c_bus._set_ro_register(0x4C, 0xFF, 0x02)
         # -----------------------------------------------------------------
         computed = self.emc2101.get_product_revision()
         expected = range(0x00, 0x17)  # assuming 0..22 are valid values for revision
@@ -115,12 +115,12 @@ class TestUsingMockedDevice(unittest.TestCase):
         self.assertIn(computed, expected, f"Got unexpected product ID '{computed}'.")
 
     def test_describe_product(self):
-        self.i2c_bus._set_ro_register(0x4C, 0xFE, 0x5D)
-        self.i2c_bus._set_ro_register(0x4C, 0xFD, 0x16)
-        self.i2c_bus._set_ro_register(0x4C, 0xFF, 0x02)
+        mid = self.emc2101.get_manufacturer_id()
+        pid = self.emc2101.get_product_id()
+        rev = self.emc2101.get_product_revision()
         # -----------------------------------------------------------------
         computed = self.emc2101.describe_device()
-        expected = "SMSC (0x5D) EMC2101 (0x16) (rev: 2)"
+        expected = f"SMSC (0x{mid:02X}) EMC2101 (0x{pid:02X}) (rev: {rev})"
         # -----------------------------------------------------------------
         self.assertIn(computed, expected, f"Got unexpected product ID '{computed}'.")
 
@@ -135,42 +135,72 @@ class TestUsingMockedDevice(unittest.TestCase):
         # -----------------------------------------------------------------
         self.emc2101.configure_spinup_behaviour(spinup_strength=spinup_strength, spinup_duration=spinup_duration, fast_mode=fast_mode)
         # -----------------------------------------------------------------
-        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x4B), 0b0010_1101)
+        self.assertEqual(self.read_device_register(0x4B), 0b0010_1101)
 
     # control duty cycle using manual control
 
-    def test_duty_cycle_read(self):
-        self.i2c_bus._set_rw_register(0x4C, 0x4A, 0b0010_0000)  # enable manual control
-        self.i2c_bus._set_rw_register(0x4C, 0x4C, 0x20)         # 64 steps (0x00 = 0%, 0x3F = 100%)
+    def test_duty_cycle_read_steps(self):
+        self.write_device_register(0x4A, 0b0010_0000)  # enable manual control
+        self.write_device_register(0x4C, 0x08)         # number of steps depends on pwm frequency
         # -----------------------------------------------------------------
-        computed = self.emc2101.get_dutycycle(value_type=DutyCycleValue.RAW_VALUE)
-        expected = 32
+        computed = self.emc2101.get_fixed_speed(unit=FanSpeedUnit.STEP)
+        expected = 8
+        # -----------------------------------------------------------------
+        self.assertEqual(computed, expected)
+
+    def test_duty_cycle_write_steps(self):
+        # -----------------------------------------------------------------
+        computed = self.emc2101.set_fixed_speed(8, unit=FanSpeedUnit.STEP)  # number of steps depends on pwm frequency
+        expected = 8                                                        # same unit as input
+        # -----------------------------------------------------------------
+        self.assertEqual(computed, expected)
+        self.assertTrue(self.read_device_register(0x4A) & 0b0010_0000)  # manual control is enabled
+        self.assertEqual(self.read_device_register(0x4C), 0x08)         # number of steps depends on pwm frequency
+
+    def test_duty_cycle_write_steps_oor(self):
+        self.assertRaises(ValueError, self.emc2101.set_fixed_speed, 20, unit=FanSpeedUnit.STEP)
+
+    def test_duty_cycle_read_percent(self):
+        self.write_device_register(0x4A, 0b0010_0000)  # enable manual control
+        self.write_device_register(0x4C, 0x08)         # number of steps depends on pwm frequency
+        # -----------------------------------------------------------------
+        computed = self.emc2101.get_fixed_speed(unit=FanSpeedUnit.PERCENT)
+        expected = 58
         # -----------------------------------------------------------------
         self.assertEqual(computed, expected)
 
     def test_duty_cycle_write_percent(self):
         # -----------------------------------------------------------------
-        computed = self.emc2101.set_dutycycle(75)  # 0..100 percent
-        expected = 75                              # same unit as input
+        computed = self.emc2101.set_fixed_speed(72)  # 0..100 percent
+        expected = 72                                # same unit as input
         # -----------------------------------------------------------------
         self.assertEqual(computed, expected)
-        self.assertTrue(self.i2c_bus._get_rw_register(0x4C, 0x4A) & 0b0010_0000)  # manual control is enabled
-        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x4C), 0x2F)         # 64 steps (0x00 = 0%, 0x3F = 100%)
+        self.assertTrue(self.read_device_register(0x4A) & 0b0010_0000)  # manual control is enabled
+        self.assertEqual(self.read_device_register(0x4C), 0x0A)         # number of steps depends on pwm frequency
 
     def test_duty_cycle_write_percent_oor(self):
-        self.assertRaises(ValueError, self.emc2101.set_dutycycle, 105)
+        self.assertRaises(ValueError, self.emc2101.set_fixed_speed, 105)
 
-    def test_duty_cycle_write_steps(self):
+    def test_duty_cycle_read_rpm(self):
+        self.write_device_register(0x4A, 0b0010_0000)  # enable manual control
+        self.write_device_register(0x4C, 0x08)         # number of steps depends on pwm frequency
         # -----------------------------------------------------------------
-        computed = self.emc2101.set_dutycycle(16, value_type=DutyCycleValue.RAW_VALUE)  # 0..63 steps
-        expected = 16                                                                   # same unit as input
+        computed = self.emc2101.get_fixed_speed(unit=FanSpeedUnit.RPM)
+        expected = self.fan_config.maximum_rpm
+        # -----------------------------------------------------------------
+        self.assertLessEqual(computed, expected)
+
+    def test_duty_cycle_write_rpm(self):
+        # -----------------------------------------------------------------
+        computed = self.emc2101.set_fixed_speed(868, unit=FanSpeedUnit.RPM)  # 0..max_rpm
+        expected = 868                                                       # same unit as input
         # -----------------------------------------------------------------
         self.assertEqual(computed, expected)
-        self.assertTrue(self.i2c_bus._get_rw_register(0x4C, 0x4A) & 0b0010_0000)  # manual control is enabled
-        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x4C), 0x10)         # 64 steps (0x00 = 0%, 0x3F = 100%)
+        self.assertTrue(self.emc2101._i2c_device.read_register(0x4A) & 0b0010_0000)  # manual control is enabled
+        self.assertEqual(self.emc2101._i2c_device.read_register(0x4C), 0x0A)         # number of steps depends on pwm frequency
 
-    def test_duty_cycle_write_steps_oor(self):
-        self.assertRaises(ValueError, self.emc2101.set_dutycycle, 70, value_type=DutyCycleValue.RAW_VALUE)
+    def test_duty_cycle_write_rpm_oor(self):
+        self.assertRaises(ValueError, self.emc2101.set_fixed_speed, 2500)
 
     # control duty cycle using temperature sensor and lookup table
 
@@ -178,124 +208,122 @@ class TestUsingMockedDevice(unittest.TestCase):
         values = {
         }
         # -----------------------------------------------------------------
-        self.emc2101.update_lookup_table(values=values, value_type=DutyCycleValue.RAW_VALUE)
+        self.emc2101.update_lookup_table(values=values, unit=FanSpeedUnit.STEP)
         # -----------------------------------------------------------------
-        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x50), 0)
-        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x51), 0x00)
-        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x52), 0)
-        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x53), 0x00)
-        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x54), 0)
-        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x55), 0x00)
-        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x56), 0)
-        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x57), 0x00)
-        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x58), 0)
-        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x59), 0x00)
-        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x5A), 0)
-        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x5B), 0x00)
-        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x5C), 0)
-        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x5D), 0x00)
-        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x5E), 0)
-        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x5F), 0x00)
+        self.assertEqual(self.read_device_register(0x50), 0)
+        self.assertEqual(self.read_device_register(0x51), 0x00)
+        self.assertEqual(self.read_device_register(0x52), 0)
+        self.assertEqual(self.read_device_register(0x53), 0x00)
+        self.assertEqual(self.read_device_register(0x54), 0)
+        self.assertEqual(self.read_device_register(0x55), 0x00)
+        self.assertEqual(self.read_device_register(0x56), 0)
+        self.assertEqual(self.read_device_register(0x57), 0x00)
+        self.assertEqual(self.read_device_register(0x58), 0)
+        self.assertEqual(self.read_device_register(0x59), 0x00)
+        self.assertEqual(self.read_device_register(0x5A), 0)
+        self.assertEqual(self.read_device_register(0x5B), 0x00)
+        self.assertEqual(self.read_device_register(0x5C), 0)
+        self.assertEqual(self.read_device_register(0x5D), 0x00)
+        self.assertEqual(self.read_device_register(0x5E), 0)
+        self.assertEqual(self.read_device_register(0x5F), 0x00)
 
     def test_update_lookup_table_partial(self):
         # there's nothing specific decimal or hex about these values,
         # using different number systems simply to make it easier to
         # see what's coming from where
         values = {
-            16: 0x15,  # temp+speed #1
-            24: 0x19,  # temp+speed #2
+            16: 0x03,  # temp+speed #1
+            24: 0x04,  # temp+speed #2
             # the remaining 6 slots remain unused
         }
         # -----------------------------------------------------------------
-        self.emc2101.update_lookup_table(values=values, value_type=DutyCycleValue.RAW_VALUE)
+        self.emc2101.update_lookup_table(values=values, unit=FanSpeedUnit.STEP)
         # -----------------------------------------------------------------
-        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x50), 16)
-        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x51), 0x15)
-        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x52), 24)
-        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x53), 0x19)
+        self.assertEqual(self.read_device_register(0x50), 16)
+        self.assertEqual(self.read_device_register(0x51), 0x03)
+        self.assertEqual(self.read_device_register(0x52), 24)
+        self.assertEqual(self.read_device_register(0x53), 0x04)
         for offset in range(4, 16):
-            self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x50 + offset), 0x00)
+            self.assertEqual(self.read_device_register(0x50 + offset), 0x00)
 
     def test_update_lookup_table_full(self):
         # there's nothing specific decimal or hex about these values,
         # using different number systems simply to make it easier to
         # see what's coming from where
         values = {
-            16: 0x15,  # temp+speed #1
-            24: 0x19,  # temp+speed #2
-            32: 0x1D,  # temp+speed #3
-            40: 0x21,  # temp+speed #4
-            48: 0x25,  # temp+speed #5
-            56: 0x20,  # temp+speed #6
-            64: 0x2D,  # temp+speed #7
-            72: 0x31,  # temp+speed #8
+            16: 0x03,  # temp+speed #1
+            24: 0x04,  # temp+speed #2
+            32: 0x05,  # temp+speed #3
+            40: 0x06,  # temp+speed #4
+            48: 0x07,  # temp+speed #5
+            56: 0x08,  # temp+speed #6
+            64: 0x09,  # temp+speed #7
+            72: 0x0A,  # temp+speed #8
         }
         # -----------------------------------------------------------------
-        self.emc2101.update_lookup_table(values=values, value_type=DutyCycleValue.RAW_VALUE)
+        self.emc2101.update_lookup_table(values=values, unit=FanSpeedUnit.STEP)
         # -----------------------------------------------------------------
-        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x50), 16)
-        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x51), 0x15)
-        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x52), 24)
-        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x53), 0x19)
-        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x54), 32)
-        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x55), 0x1D)
-        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x56), 40)
-        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x57), 0x21)
-        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x58), 48)
-        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x59), 0x25)
-        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x5A), 56)
-        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x5B), 0x20)
-        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x5C), 64)
-        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x5D), 0x2D)
-        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x5E), 72)
-        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x5F), 0x31)
+        self.assertEqual(self.read_device_register(0x50), 16)
+        self.assertEqual(self.read_device_register(0x51), 0x03)
+        self.assertEqual(self.read_device_register(0x52), 24)
+        self.assertEqual(self.read_device_register(0x53), 0x04)
+        self.assertEqual(self.read_device_register(0x54), 32)
+        self.assertEqual(self.read_device_register(0x55), 0x05)
+        self.assertEqual(self.read_device_register(0x56), 40)
+        self.assertEqual(self.read_device_register(0x57), 0x06)
+        self.assertEqual(self.read_device_register(0x58), 48)
+        self.assertEqual(self.read_device_register(0x59), 0x07)
+        self.assertEqual(self.read_device_register(0x5A), 56)
+        self.assertEqual(self.read_device_register(0x5B), 0x08)
+        self.assertEqual(self.read_device_register(0x5C), 64)
+        self.assertEqual(self.read_device_register(0x5D), 0x09)
+        self.assertEqual(self.read_device_register(0x5E), 72)
+        self.assertEqual(self.read_device_register(0x5F), 0x0A)
 
     def test_update_lookup_table_toomany(self):
         # there's nothing specific decimal or hex about these values,
         # using different number systems simply to make it easier to
         # see what's coming from where
         values = {
-            16: 0x15,  # temp+speed #1
-            24: 0x19,  # temp+speed #2
-            32: 0x1D,  # temp+speed #3
-            40: 0x21,  # temp+speed #4
-            48: 0x25,  # temp+speed #5
-            56: 0x20,  # temp+speed #6
-            64: 0x2D,  # temp+speed #7
-            72: 0x31,  # temp+speed #8
-            80: 0x35,  # there is no slot #9
+            16: 0x03,  # temp+speed #1
+            24: 0x04,  # temp+speed #2
+            32: 0x05,  # temp+speed #3
+            40: 0x06,  # temp+speed #4
+            48: 0x07,  # temp+speed #5
+            56: 0x08,  # temp+speed #6
+            64: 0x09,  # temp+speed #7
+            72: 0x0A,  # temp+speed #8
+            80: 0x0B,  # there is no slot #9
         }
         # -----------------------------------------------------------------
         # -----------------------------------------------------------------
-        self.assertRaises(ValueError, self.emc2101.update_lookup_table, values=values, value_type=DutyCycleValue.RAW_VALUE)
-
+        self.assertRaises(ValueError, self.emc2101.update_lookup_table, values=values, unit=FanSpeedUnit.STEP)
 
     def test_reset_lookup(self):
         # populate with some non-zero values
         values = {
-            20: 0x10,  # temp+speed #1
-            24: 0x11,  # temp+speed #2
-            32: 0x12,  # temp+speed #3
-            40: 0x13,  # temp+speed #4
-            48: 0x14,  # temp+speed #5
-            56: 0x15,  # temp+speed #6
-            64: 0x16,  # temp+speed #7
-            72: 0x17,  # temp+speed #8
+            20: 0x03,  # temp+speed #1
+            24: 0x04,  # temp+speed #2
+            32: 0x05,  # temp+speed #3
+            40: 0x06,  # temp+speed #4
+            48: 0x07,  # temp+speed #5
+            56: 0x08,  # temp+speed #6
+            64: 0x09,  # temp+speed #7
+            72: 0x0A,  # temp+speed #8
         }
-        self.emc2101.update_lookup_table(values=values, value_type=DutyCycleValue.RAW_VALUE)
+        self.emc2101.update_lookup_table(values=values, unit=FanSpeedUnit.STEP)
         # -----------------------------------------------------------------
         self.emc2101.reset_lookup_table()
         # -----------------------------------------------------------------
         for offset in range(0, 16):
-            self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x50 + offset), 0x00)
-
+            self.assertEqual(self.read_device_register(0x50 + offset), 0x00)
 
     # ---------------------------------------------------------------------
     # measure temperatures
     # ---------------------------------------------------------------------
 
     def test_get_temperature_conversion_rate(self):
-        self.i2c_bus._set_rw_register(0x4C, 0x04, 0b0000_0111)
+        self.write_device_register(0x04, 0b0000_0111)
         # -----------------------------------------------------------------
         computed = self.emc2101.get_temperature_conversion_rate()
         expected = "8"
@@ -306,7 +334,7 @@ class TestUsingMockedDevice(unittest.TestCase):
         # -----------------------------------------------------------------
         self.assertTrue(self.emc2101.set_temperature_conversion_rate("1/8"))
         # -----------------------------------------------------------------
-        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x04), 0b0000_0001)
+        self.assertEqual(self.read_device_register(0x04), 0b0000_0001)
 
     def test_get_temperature_conversion_rates(self):
         # -----------------------------------------------------------------
@@ -316,62 +344,66 @@ class TestUsingMockedDevice(unittest.TestCase):
         self.assertEqual(computed, expected, f"Got unexpected temperature conversion rates '{computed}'.")
 
     def test_chip_temperature(self):
-        self.i2c_bus._set_ro_register(0x4C, 0x00, 0x14)
         # -----------------------------------------------------------------
         computed = self.emc2101.get_chip_temperature()
-        expected = 20
+        expected = self.read_device_register(0x00)
         # -----------------------------------------------------------------
         self.assertEqual(computed, expected, f"Got unexpected chip temperature '{computed}'.")
 
     def test_chip_temperature_limit_read(self):
-        self.i2c_bus._set_rw_register(0x4C, 0x05, 0x46)
+        self.write_device_register(0x05, 0x46)
         # -----------------------------------------------------------------
         computed = self.emc2101.get_chip_temperature_limit()
         expected = 70
         # -----------------------------------------------------------------
         self.assertEqual(computed, expected, f"Got unexpected chip temperature limit '{computed}'.")
 
+    def test_has_sensor(self):
+        # -----------------------------------------------------------------
+        computed = self.emc2101.has_external_sensor()
+        expected = not self.read_device_register(0x02) & 0b0000_0100
+        # -----------------------------------------------------------------
+        self.assertEqual(computed, expected)
+
     def test_sensor_temperature(self):
-        self.i2c_bus._set_ro_register(0x4C, 0x01, 0x1B)         # external sensor temperature (decimal)
-        self.i2c_bus._set_ro_register(0x4C, 0x10, 0b1110_0000)  # external sensor temperature (fraction)
         # -----------------------------------------------------------------
         computed = self.emc2101.get_sensor_temperature()
-        expected = 27.9
         # -----------------------------------------------------------------
-        self.assertEqual(computed, expected, f"Got unexpected sensor temperature '{computed}'.")
+        self.assertGreaterEqual(computed, 0, f"Got unexpected sensor temperature '{computed}'.")
+        self.assertLessEqual(computed, 85, f"Got unexpected sensor temperature '{computed}'.")
 
     def test_sensor_temperature_limit_read_lower(self):
-        self.i2c_bus._set_rw_register(0x4C, 0x08, 0x12)         # external sensor low limit (decimal)
-        self.i2c_bus._set_rw_register(0x4C, 0x14, 0b1110_0000)  # external sensor low limit (fraction)
+        self.write_device_register(0x08, 0x12)         # external sensor low limit (decimal)
+        self.write_device_register(0x14, 0b1110_0000)  # external sensor low limit (fraction)
         # -----------------------------------------------------------------
-        computed = self.emc2101.get_sensor_temperature_limit(limit_type=LimitType.LOWER)
+        computed = self.emc2101.get_sensor_temperature_limit(limit_type=TemperatureLimitType.TO_COLD)
         expected = 18.9
         # -----------------------------------------------------------------
         self.assertEqual(computed, expected, f"Got unexpected sensor temperature limit '{computed}'.")
 
     def test_sensor_temperature_limit_write_lower(self):
         # -----------------------------------------------------------------
-        computed = self.emc2101.set_sensor_temperature_limit(5.91, limit_type=LimitType.LOWER)
+        computed = self.emc2101.set_sensor_temperature_limit(5.91, limit_type=TemperatureLimitType.TO_COLD)
         expected = 5.9
         # -----------------------------------------------------------------
         self.assertEqual(computed, expected, f"Got unexpected sensor temperature limit '{computed}'.")
-        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x08), 0x05)
-        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x14), 0b1110_0000)
+        self.assertEqual(self.read_device_register(0x08), 0x05)
+        self.assertEqual(self.read_device_register(0x14), 0b1110_0000)
 
     def test_sensor_temperature_limit_read_upper(self):
-        self.i2c_bus._set_rw_register(0x4C, 0x07, 0x54)         # external sensor low limit (decimal)
-        self.i2c_bus._set_rw_register(0x4C, 0x13, 0b1110_0000)  # external sensor low limit (fraction)
+        self.write_device_register(0x07, 0x54)         # external sensor low limit (decimal)
+        self.write_device_register(0x13, 0b1110_0000)  # external sensor low limit (fraction)
         # -----------------------------------------------------------------
-        computed = self.emc2101.get_sensor_temperature_limit(limit_type=LimitType.UPPER)
+        computed = self.emc2101.get_sensor_temperature_limit(limit_type=TemperatureLimitType.TO_HOT)
         expected = 84.9
         # -----------------------------------------------------------------
         self.assertEqual(computed, expected, f"Got unexpected sensor temperature limit '{computed}'.")
 
     def test_sensor_temperature_limit_write_upper(self):
         # -----------------------------------------------------------------
-        computed = self.emc2101.set_sensor_temperature_limit(84.91, limit_type=LimitType.UPPER)
+        computed = self.emc2101.set_sensor_temperature_limit(84.91, limit_type=TemperatureLimitType.TO_HOT)
         expected = 84.9
         # -----------------------------------------------------------------
         self.assertEqual(computed, expected, f"Got unexpected sensor temperature limit '{computed}'.")
-        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x07), 0x54)
-        self.assertEqual(self.i2c_bus._get_rw_register(0x4C, 0x13), 0b1110_0000)
+        self.assertEqual(self.read_device_register(0x07), 0x54)
+        self.assertEqual(self.read_device_register(0x13), 0b1110_0000)

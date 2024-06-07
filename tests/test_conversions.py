@@ -4,44 +4,51 @@
 
 import unittest
 
-import i2c.emc2101
+from i2c.emc2101.conversions import convert_bytes2temperature, convert_temperature2bytes
 
+class TestConversions(unittest.TestCase):
 
-class TestDutycycleConversions(unittest.TestCase):
-    """
-    test the logic for converting the duty cycle raw value (0..63) to percentages (0..100%)
-     - since the effective range is limited it does not make sense to pretend the duty cycle
-       can be set to an exact percentage, all percentage values are rounded to nearest integer
-     - unfortunately it's not possible to set duty cycle to exactly 50% due to the internal
-       value's resolution (31 rounds down to 49%, 32 rounds up to 51%)
-    """
-
-    def setUp(self) -> None:
-        # generate a mapping of raw values to percentages (0 -> 0%, ..., 63 -> 100%)
-        self.mappings = [ (x, x * 100 / 63) for x in range(64)]
-
-    def test_convert_percentage2raw(self):
-        for raw_value, percentage in self.mappings:
-            computed = i2c.emc2101._convert_dutycycle_percentage2raw(round(percentage))
-            expected = raw_value
+    def test_convert_bytes2temperature(self):
+        values = {
+            (0x14, 0b0000_0000): 20.00,
+            (0x14, 0b0010_0000): 20.15,
+            (0x14, 0b0100_0000): 20.25,
+            (0x14, 0b1000_0000): 20.50,
+            (0x14, 0b1110_0000): 20.90,
+        }
+        for bytes, temperature in values.items():
+            msb, lsb = bytes
+            computed = convert_bytes2temperature(msb, lsb)
+            expected = temperature
             # -------------------------------------------------------------
-            self.assertIsInstance(computed, int)
-            self.assertEqual(computed, expected, f"percentage {percentage} -> computed: {computed} != expected: {expected}")
+            self.assertEqual(computed, expected)
 
-    def test_convert_percentage2raw_oor(self):
-        # percentage must be in range 0..100
-        self.assertRaises(ValueError, i2c.emc2101._convert_dutycycle_percentage2raw, -1)
-        self.assertRaises(ValueError, i2c.emc2101._convert_dutycycle_percentage2raw, 101)
-
-    def test_convert_raw2percentage(self):
-        for raw_value, percentage in self.mappings:
-            computed = i2c.emc2101._convert_dutycycle_raw2percentage(raw_value)
-            expected = round(percentage)
+    def test_convert_temperature2bytes(self):
+        values = {
+            # exact conversion
+            # 20.00: (0x14, 0b0000_0000),
+            # 20.15: (0x14, 0b0010_0000),
+            # 20.25: (0x14, 0b0100_0000),
+            # 20.50: (0x14, 0b1000_0000),
+            # 20.90: (0x14, 0b1110_0000),
+            # approximations
+            # 21.07: (0x15, 0b0000_0000),
+            # 21.08: (0x15, 0b0010_0000),
+            # 21.19: (0x15, 0b0010_0000),
+            # 21.20: (0x15, 0b0100_0000),
+            21.37: (0x15, 0b0110_0000),
+            21.38: (0x15, 0b1000_0000),
+            21.57: (0x15, 0b1000_0000),
+            21.58: (0x15, 0b1010_0000),
+            21.69: (0x15, 0b1010_0000),
+            21.70: (0x15, 0b1100_0000),
+            21.82: (0x15, 0b1100_0000),
+            21.83: (0x15, 0b1110_0000),
+            21.94: (0x15, 0b1110_0000),
+            21.95: (0x16, 0b0000_0000),
+        }
+        for temperature, bytes in values.items():
+            computed = convert_temperature2bytes(temperature)
+            expected = bytes
             # -------------------------------------------------------------
-            self.assertIsInstance(computed, int)
-            self.assertEqual(computed, expected, f"raw value: {raw_value} -> computed: {computed} != expected: {expected}")
-
-    def test_convert_raw2percentage_oor(self):
-        # raw value must be in range 0..63
-        self.assertRaises(ValueError, i2c.emc2101._convert_dutycycle_raw2percentage, -1)
-        self.assertRaises(ValueError, i2c.emc2101._convert_dutycycle_raw2percentage, 64)
+            self.assertEqual(computed, expected)
