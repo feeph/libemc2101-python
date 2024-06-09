@@ -5,6 +5,8 @@
 #   pip install --upgrade pip
 #   pip install -r requirements.txt
 
+pyyaml ~= 6.0.0
+
 # for Raspberry Pi and related devices
 # (not necessary when running CircuitPython natively)
 # https://pypi.org/project/adafruit-board-toolkit/

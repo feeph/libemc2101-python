@@ -495,43 +495,117 @@ class Emc2101:
     # convenience functions
     # ---------------------------------------------------------------------
 
-    def calibrate(self) -> FanConfig:
+    def calibrate_pwm_fan(self, model: str, pwm_frequency: int) -> FanConfig|None:
         """
-        walk through various duty cycle settings and determine the fan's
-        configuration parameters
+        walk through various settings and determine the fan's configuration
+        parameters
         """
-        LH.info("Calibrating fan parameters. This will take a few seconds.")
-        # remove all limits
-        self._duty_min = 0
-        self._duty_max = 100
-        self._rpm_min = 0
-        self._rpm_max = -1
-        # TODO verify that duty cycle changes influence the fan's speed
-        # ...
-        # determine maximum RPM
-        self.set_dutycycle(100)
-        has_settled = False
-        rpm_ref = -1
-        rpm_cur = 0
-        while not has_settled:
+        LH.info("Calibrating fan parameters.")
+        fancfg_params = {
+            "model":              model,
+            "rpm_control_mode":   RpmControlMode.PWM,
+            "pwm_frequency":      pwm_frequency,
+            "minimum_duty_cycle":     0,
+            "maximum_duty_cycle":   100,
+            "minimum_rpm":            0,
+            "maximum_rpm":        50000, # delta fans may go up to 45000 RPM
+        }
+        from i2c.emc2101.scs import PWM
+        self._scs = PWM(fan_config=FanConfig(**fancfg_params))
+        # -----------------------------------------------------------------
+        LH.debug("Disabling gradual speed rampup.")
+        # TODO disable gradual rampup
+        # TODO set initial driver strength to 100%
+        # -----------------------------------------------------------------
+        LH.info("Testing if fan responds to PWM signal:")
+        steps = self._scs.get_steps()
+        LH.debug("speed control steps: %s", steps)
+        step1 = steps[int(len(steps)/2)]  # pick something in the middle
+        step2 = steps[-2]                 # pick the second highest possible setting
+        if step1 == step2:
+            LH.warning("Fan does not have enough steps to calibrate!")
+            return
+        self.set_fixed_speed(step1, unit=FanSpeedUnit.STEP)
+        time.sleep(5)
+        dutycycle1 = self._scs.convert_step2percent(step1)
+        rpm1 = self.get_rpm()
+        LH.debug("dutycycle: %i%% -> RPM: %i", dutycycle1, rpm1)
+        self.set_fixed_speed(step2, unit=FanSpeedUnit.STEP)
+        time.sleep(5)
+        dutycycle2 = self._scs.convert_step2percent(step2)
+        rpm2 = self.get_rpm()
+        LH.debug("dutycycle: %i%% -> RPM: %i", dutycycle2, rpm2)
+        if rpm1 * 100 / rpm2 < 96:
+            LH.info("Yes, it does. Observed an RPM change in response to PWM signal. (%i%%: %i -> %i%%: %i RPM)", dutycycle1, rpm1, dutycycle2, rpm2)
+        else:
+            LH.warning("Failed to observe a significant speed change in response to PWM signal! Aborting.")
+            LH.warning("Please verify wiring and configuration.")
+            return
+        # -----------------------------------------------------------------
+        LH.info("Mapping PWM dutycycle to RPM. Please wait.")
+        mappings = list()
+        for step in self._scs.get_steps():
+            dutycycle = self._scs.convert_step2percent(step)
+            # set fan speed and wait for the speed to settle
+            self.set_fixed_speed(step, unit=FanSpeedUnit.STEP)
             time.sleep(1)
-            rpm_cur = self.get_rpm()
-            if (rpm_ref/10) != (rpm_cur/10):  # RPM will never be exactly the same
-                LH.debug("not settled: ref=%i, cur=%i", rpm_ref, rpm_cur)
-                rpm_ref = rpm_cur
+            readings = [99999, 99999, 99999]
+            for i in range(24):
+                cursor = i % len(readings)
+                rpm_cur = self.get_rpm()
+                # order is important! (update readings before calculating the average)
+                readings[cursor] = rpm_cur
+                rpm_avg = sum(readings)/len(readings)
+                # calculate deviation from average
+                deviation = rpm_cur/rpm_avg
+                LH.debug("step: %2i i: %2i -> rpm: %4i deviation: %3.2f", step, cursor, rpm_cur, deviation)
+                if 0.99 <= deviation <= 1.01:
+                    # RPM will never be exact and fluctuates slightly
+                    # -> round to nearest factor of 5
+                    rpm = round(rpm_avg/5)*5
+                    LH.debug("Fan has settled: (step: %i -> dutycycle: %3i%%, rpm: %i)", step, dutycycle, rpm)
+                    mappings.append((step, dutycycle, rpm))
+                    break
+                else:
+                    time.sleep(0.5)
             else:
-                LH.debug("has settled: cur=%i", rpm_cur)
-                has_settled = True
-        self._rpm_max = rpm_cur
-        # determine minimum duty cycle
-        for duty_cycle in range(30, -1, -5):
-            self.set_dutycycle(duty_cycle)
-            time.sleep(0.5)
-            rpm = self.get_rpm()
-            LH.debug("duty cycle: %2i rpm: %4i", duty_cycle, rpm)
-            # TODO determine cut-off threshold was reached and set self._duty_min
-        fan_config = FanConfig(rpm_control_mode=self._control_mode, minimum_duty_cycle=self._duty_min, maximum_duty_cycle=self._duty_max, minimum_rpm=self._rpm_min, maximum_rpm=self._rpm_max)
-        return fan_config
+                LH.warning("Fan never settled! (step: %i -> dutycycle: %3i%%, rpm: <n/a>)", step, dutycycle)
+                mappings.append((step, dutycycle, rpm))
+
+        # determine maximum RPM
+        rpm_max = max([rpm for (_, _, rpm) in mappings])
+        LH.info("Maximum RPM: %i", rpm_max)
+
+        # prune steps
+        #  - multiple steps may result in the same RPM (e.g. minimum RPM)
+        #  - ensure each step is significantly different from the previous
+        #  - ensure each step increases RPM
+        prune = list()
+        rpm_delta_min = rpm_max*0.011
+        for i in range(len(mappings)-1):
+            step, _, rpm_this = mappings[i]
+            _, _, rpm_next = mappings[i+1]
+            if rpm_this + rpm_delta_min <= rpm_next:
+                # significantly different from next element -> keep it
+                pass
+            else:
+                # within range of next element -> prune it
+                prune.append(step)
+
+        steps = {}
+        for step, dutycycle, rpm in mappings:
+            rpm_percent = rpm * 100 / rpm_max
+            LH.info("step: %2i dutycycle: %3i%% -> RPM: %5i (%3.0f%%)", step, dutycycle, rpm, rpm_percent)
+            if step not in prune:
+                steps[step] = (dutycycle, rpm)
+
+        # update initial parameters with detected values
+        fancfg_params["minimum_duty_cycle"] = min([dutycycle for (_, (dutycycle, _)) in steps.items()])  # e.g. 20%
+        fancfg_params["maximum_duty_cycle"] = max([dutycycle for (_, (dutycycle, _)) in steps.items()])  # typically 100%
+        fancfg_params["minimum_rpm"] = min([rpm for (_, (_, rpm)) in steps.items()])
+        fancfg_params["maximum_rpm"] = max([rpm for (_, (_, rpm)) in steps.items()])
+        fancfg_params["steps"] = steps
+        return FanConfig(**fancfg_params)
 
     def read_fancfg_register(self) -> int:
         # described in datasheet section 6.16 "Fan Configuration Register"
@@ -610,12 +684,7 @@ class Emc2101:
             elif device_config.rpm_control_mode == RpmControlMode.PWM:
                 LH.info("EMC2101 and connected fan both use PWM to control fan speed. Good.")
                 from i2c.emc2101.scs import PWM
-                params = {
-                    "pwm_frequency": fan_config.pwm_frequency,
-                    "minimum_duty_cycle": fan_config.minimum_duty_cycle,
-                    "maximum_duty_cycle": fan_config.maximum_duty_cycle,
-                }
-                scs = PWM(**params)
+                scs = PWM(fan_config=fan_config)
                 # enable PWM control (set 0x03.4 to 0)
                 cfg_register_value = i2c_device.read_register(0x03)
                 i2c_device.write_register(0x03, cfg_register_value & 0b1110_1111)
