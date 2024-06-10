@@ -34,6 +34,7 @@ class I2cDevice:
                 LH.error("[%s] Unable to read register 0x%02X (%i/%i): %s", __name__, register, cur_try, max_tries, e)
         else:
             LH.error("[%s] Unable to read register 0x%02X after %i attempts. Giving up.", __name__, register, max_tries)
+            return None
 
     def write_register(self, register: int, value: int):
         buf = bytearray(2)

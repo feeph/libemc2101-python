@@ -13,7 +13,7 @@ class RpmControlMode(Enum):
 # basically a dataclass/attrs, but attrs are not available on CircuitPython
 class FanConfig:
 
-    def __init__(self, model: str, rpm_control_mode: RpmControlMode, minimum_duty_cycle: int, maximum_duty_cycle: int, minimum_rpm: int, maximum_rpm: int, pwm_frequency: int | None = None, steps: dict[int, tuple[int, int]] | None = None):
+    def __init__(self, model: str, rpm_control_mode: RpmControlMode, minimum_duty_cycle: int, maximum_duty_cycle: int, minimum_rpm: int, maximum_rpm: int, pwm_frequency: int | None = None, steps: dict[int, tuple[int, int | None]] | None = None):
         self.model = model
         self.rpm_control_mode = rpm_control_mode
         if rpm_control_mode == RpmControlMode.PWM:
@@ -36,7 +36,7 @@ class FanConfig:
         self.maximum_rpm = maximum_rpm
 
 
-def export_fan_config(fan_config: FanConfig) -> dict[str, str | int]:
+def export_fan_config(fan_config: FanConfig) -> dict[str, str | int | dict[int, tuple[int, int]] | None]:
     if fan_config.rpm_control_mode == RpmControlMode.VOLTAGE:
         return {
             "model": fan_config.model,
@@ -46,12 +46,15 @@ def export_fan_config(fan_config: FanConfig) -> dict[str, str | int]:
             "steps": fan_config.steps,
         }
     elif fan_config.rpm_control_mode == RpmControlMode.PWM:
-        steps = {}
-        for step, (dutycycle, rpm) in fan_config.steps.items():
-            steps[step] = {
-                "dutycycle": dutycycle,
-                "rpm": rpm,
-            }
+        if fan_config.steps is not None:
+            steps = {}
+            for step, (dutycycle, rpm) in fan_config.steps.items():
+                steps[step] = {
+                    "dutycycle": dutycycle,
+                    "rpm": rpm,
+                }
+        else:
+            steps = None
         return {
             "model": fan_config.model,
             "control_mode": "PWM",

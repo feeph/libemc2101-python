@@ -89,7 +89,7 @@ class PWM(SpeedControlSetter):
                     deviation_cur = deviation_new
         return step_cur
 
-    def convert_step2rpm(self, step: int) -> int:
+    def convert_step2rpm(self, step: int) -> int | None:
         return self._steps[step][1]
 
 

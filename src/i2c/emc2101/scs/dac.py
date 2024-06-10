@@ -33,42 +33,46 @@ class DAC(SpeedControlSetter):
     def is_valid_step(self, value: int) -> bool:
         return value in self._steps.keys()
 
-    def convert_percent2step(self, percent: int) -> int:
+    def get_steps(self) -> list[int]:
+        """
+        define available control steps and their resulting fan speeds
+        """
+        return list(self._steps.keys())
+
+    def convert_percent2step(self, percent: int) -> int | None:
         """
         find the closest step for the provided value
         """
         step_cur = None
         deviation_cur = None
-        for step_new, record in self._steps.items():
-            for _, percent_step in record:
-                if percent_step == 0:
-                    percent_step = 1
-                deviation_new = abs(1 - percent / percent_step)
-                if deviation_cur is None or deviation_new < deviation_cur:
-                    step_cur = step_new
-                    deviation_cur = deviation_new
+        for step_new, (_, percent_step) in self._steps.items():
+            if percent_step == 0:
+                percent_step = 1
+            deviation_new = abs(1 - percent / percent_step)
+            if deviation_cur is None or deviation_new < deviation_cur:
+                step_cur = step_new
+                deviation_cur = deviation_new
         return step_cur
 
     def convert_step2percent(self, step: int) -> int:
         return self._steps[step][1]
 
-    def convert_rpm2step(self, rpm: int) -> int:
+    def convert_rpm2step(self, rpm: int) -> int | None:
         """
         find the closest step for the provided value
         """
         step_cur = None
         deviation_cur = None
-        for step_new, record in self._steps.items():
-            for rpm_step, _ in record:
-                if rpm_step == 0:
-                    rpm_step = 1
-                deviation_new = abs(1 - rpm / rpm_step)
-                if deviation_cur is None or deviation_new < deviation_cur:
-                    step_cur = step_new
-                    deviation_cur = deviation_new
+        for step_new, (rpm_step, _) in self._steps.items():
+            if rpm_step == 0:
+                rpm_step = 1
+            deviation_new = abs(1 - rpm / rpm_step)
+            if deviation_cur is None or deviation_new < deviation_cur:
+                step_cur = step_new
+                deviation_cur = deviation_new
         return step_cur
 
-    def convert_step2rpm(self, step: int) -> int:
+    def convert_step2rpm(self, step: int) -> int | None:
         return self._steps[step][0]
 
 

@@ -8,7 +8,7 @@
 import logging
 import time
 from enum import Enum
-from typing import Dict, Optional
+from typing import Any
 
 import busio
 
@@ -171,14 +171,15 @@ class StatusRegister:
 
     def update(self, i2c_device: I2cDevice):
         value = i2c_device.read_register(self._register)
-        self.tach     = value & 0b0000_0001
-        self.tcrit    = value & 0b0000_0010
-        self.fault    = value & 0b0000_0100
-        self.ext_low  = value & 0b0000_1000
-        self.ext_high = value & 0b0001_0000
-        self.eeprom   = value & 0b0010_0000
-        self.int_high = value & 0b0100_0000
-        self.busy     = value & 0b1000_0000
+        if value is not None:
+            self.tach     = value & 0b0000_0001
+            self.tcrit    = value & 0b0000_0010
+            self.fault    = value & 0b0000_0100
+            self.ext_low  = value & 0b0000_1000
+            self.ext_high = value & 0b0001_0000
+            self.eeprom   = value & 0b0010_0000
+            self.int_high = value & 0b0100_0000
+            self.busy     = value & 0b1000_0000
 
 
 class TemperatureLimitType(Enum):
@@ -203,21 +204,21 @@ class Emc2101:
         self._i2c_device.write_register(0x12, ets_config.diode_ideality_factor)
         self._i2c_device.write_register(0x18, ets_config.beta_compensation_factor)
 
-    def get_manufacturer_id(self) -> Optional[int]:
+    def get_manufacturer_id(self) -> int | None:
         """
         read the manufacturer ID
         (0x5d for SMSC)
         """
         return self._i2c_device.read_register(0xFE)
 
-    def get_product_id(self):
+    def get_product_id(self) -> int | None:
         """
         read the product ID
         (0x16 for EMC2101, 0x28 for EMC2101-R)
         """
         return self._i2c_device.read_register(0xFD)
 
-    def get_product_revision(self):
+    def get_product_revision(self) -> int | None:
         return self._i2c_device.read_register(0xFF)
 
     def describe_device(self):
@@ -266,13 +267,16 @@ class Emc2101:
         # check if tacho mode is enabled
         if self._pin_six_mode != PinSixMode.TACHO:
             LH.warning("Pin six is not configured for tacho mode. Please enable tacho mode.")
-            return
+            return None
         # get tacho readings
         # (the order of is important; see datasheet section 6.1 for details)
         tach_lsb = self._i2c_device.read_register(0x46)  # TACH Reading Low Byte, must be read first!
         tach_msb = self._i2c_device.read_register(0x47)  # TACH Reading High Byte
-        LH.debug("tach readings: LSB=0x%02X MSB=0x%02X", tach_lsb, tach_msb)
-        return _convert_tach2rpm(msb=tach_msb, lsb=tach_lsb)
+        if tach_lsb is not None and tach_msb is not None:
+            LH.debug("tach readings: LSB=0x%02X MSB=0x%02X", tach_lsb, tach_msb)
+            return _convert_tach2rpm(msb=tach_msb, lsb=tach_lsb)
+        else:
+            return None
 
     def get_fixed_speed(self, unit: FanSpeedUnit = FanSpeedUnit.PERCENT) -> int:
         step = self._i2c_device.read_register(0x4C)
@@ -315,7 +319,7 @@ class Emc2101:
         else:
             return step
 
-    def update_lookup_table(self, values: Dict[int, int], unit: FanSpeedUnit = FanSpeedUnit.PERCENT) -> bool:
+    def update_lookup_table(self, values: dict[int, int], unit: FanSpeedUnit = FanSpeedUnit.PERCENT) -> bool:
         """
         populate the lookup table with the provided values and
         sets all unused values to zero
@@ -639,14 +643,17 @@ class Emc2101:
 
     def _configure_external_temperature_sensor(self, ets_config: ExternalTemperatureSensorConfig):
         dev_status = self._i2c_device.read_register(0x02)
-        if not dev_status & 0b0000_0100:
-            LH.error("diode fault bit is not set")
-            # diode fault bit is not set
-            self._i2c_device.write_register(0x12, ets_config.diode_ideality_factor)
-            self._i2c_device.write_register(0x18, ets_config.beta_compensation_factor)
+        if dev_status is not None:
+            if not dev_status & 0b0000_0100:
+                LH.error("diode fault bit is not set")
+                # diode fault bit is not set
+                self._i2c_device.write_register(0x12, ets_config.diode_ideality_factor)
+                self._i2c_device.write_register(0x18, ets_config.beta_compensation_factor)
+            else:
+                LH.error("diode fault bit is set")
+                # diode fault bit was set - diode faulty or missing
         else:
-            LH.error("diode fault bit is set")
-            # diode fault bit was set - diode faulty or missing
+            LH.error("Unable to read device status register!")
 
     def _configure_speed_control_setter(self, i2c_device: I2cDevice, device_config: DeviceConfig, fan_config: FanConfig) -> SpeedControlSetter | None:
         """
@@ -686,7 +693,10 @@ class Emc2101:
                 scs = PWM(fan_config=fan_config)
                 # enable PWM control (set 0x03.4 to 0)
                 cfg_register_value = i2c_device.read_register(0x03)
-                i2c_device.write_register(0x03, cfg_register_value & 0b1110_1111)
+                if cfg_register_value is not None:
+                    i2c_device.write_register(0x03, cfg_register_value & 0b1110_1111)
+                else:
+                    LH.error("Unable to read config register!")
                 # configure pwm frequency divider settings
                 pwm_d, pwm_f = scs.get_pwm_settings()
                 self._i2c_device.write_register(0x4D, pwm_f)
@@ -698,7 +708,7 @@ class Emc2101:
             raise ValueError("device has unsupported rpm control mode")
 
 
-def parse_fanconfig_register(value: int) -> dict[str, str]:
+def parse_fanconfig_register(value: int) -> dict[str, Any]:
     # 0b00000000
     #         ^^-- tachometer input mode
     #        ^---- clock frequency override
@@ -721,7 +731,10 @@ def _configure_pin_six_mode(i2c_device: I2cDevice, pin_six_mode: PinSixMode) -> 
     if pin_six_mode == PinSixMode.ALERT:
         # set 0x03.2 to 0
         cfg_register_value = i2c_device.read_register(0x03)
-        i2c_device.write_register(0x03, cfg_register_value & 0b1111_1011)
+        if cfg_register_value is not None:
+            i2c_device.write_register(0x03, cfg_register_value & 0b1111_1011)
+        else:
+            LH.error("Unable to read config register!")
         # clear spin up behavior settings
         # (spin up is unavailable when pin 6 is in alert mode)
         i2c_device.write_register(0x4B, 0b0000_0000)
@@ -729,7 +742,10 @@ def _configure_pin_six_mode(i2c_device: I2cDevice, pin_six_mode: PinSixMode) -> 
     elif pin_six_mode == PinSixMode.TACHO:
         # set 0x03.2 to 1
         cfg_register_value = i2c_device.read_register(0x03)
-        i2c_device.write_register(0x03, cfg_register_value | 0b0000_0100)
+        if cfg_register_value is not None:
+            i2c_device.write_register(0x03, cfg_register_value | 0b0000_0100)
+        else:
+            LH.error("Unable to read config register!")
         return PinSixMode.TACHO
     else:
         raise NotImplementedError("unsupported pin 6 mode")
@@ -773,7 +789,7 @@ def _convert_tach2rpm(msb: int, lsb: int) -> int | None:
         rpm = int(5_400_000 / tach)
         return rpm
     else:
-        return
+        return None
 
 
 def _verify_value_range(value: int, value_range: tuple[int, int]):

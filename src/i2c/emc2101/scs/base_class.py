@@ -19,7 +19,7 @@ class SpeedControlSetter(ABC):
         ...
 
     @abstractmethod
-    def convert_percent2step(self, percent: int) -> int:
+    def convert_percent2step(self, percent: int) -> int | None:
         ...
 
     @abstractmethod
@@ -27,9 +27,9 @@ class SpeedControlSetter(ABC):
         ...
 
     @abstractmethod
-    def convert_rpm2step(self, rpm: int) -> int:
+    def convert_rpm2step(self, rpm: int) -> int | None:
         ...
 
     @abstractmethod
-    def convert_step2rpm(self, step: int) -> int:
+    def convert_step2rpm(self, step: int) -> int | None:
         ...
