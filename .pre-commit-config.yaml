@@ -4,7 +4,8 @@
 #
 # perform once after cloning the repository:
 #  pipx install pre-commit
-#  pre-commit install
+#  pre-commit install --hook-type pre-commit
+#  pre-commit install --hook-type commit-msg
 #
 # if you want to trigger pre-commit manually:
 #  pre-commit run
@@ -26,3 +27,11 @@ repos:
     rev: v2.2.0
     hooks:
       - id: autopep8
+  # https://www.conventionalcommits.org/
+  - repo: https://github.com/compilerla/conventional-pre-commit
+    rev: v3.2.0
+    hooks:
+      - id: conventional-pre-commit
+        stages:
+         - commit-msg
+        args: []
