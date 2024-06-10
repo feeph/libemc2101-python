@@ -15,17 +15,17 @@ class TestScsPwm(unittest.TestCase):
         self.steps = {
             # fmt: off
             #      %   RPM
-             3: ( 34,  409),
-             4: ( 40,  479),
-             5: ( 44,  526),
-             6: ( 49,  591),
-             7: ( 52,  629),
-             8: ( 58,  697),
-             9: ( 65,  785),
-            10: ( 72,  868),
-            11: ( 79,  950),
-            12: ( 87, 1040),
-            13: ( 93, 1113),
+            3:  ( 34,  409),  # noqa: E201
+            4:  ( 40,  479),  # noqa: E201
+            5:  ( 44,  526),  # noqa: E201
+            6:  ( 49,  591),  # noqa: E201
+            7:  ( 52,  629),  # noqa: E201
+            8:  ( 58,  697),  # noqa: E201
+            9:  ( 65,  785),  # noqa: E201
+            10: ( 72,  868),  # noqa: E201
+            11: ( 79,  950),  # noqa: E201
+            12: ( 87, 1040),  # noqa: E201
+            13: ( 93, 1113),  # noqa: E201
             14: (100, 1194),
             # fmt: on
         }
@@ -66,14 +66,12 @@ class TestScsPwm(unittest.TestCase):
 
     def test_pwm_calculations(self):
         values = {
-            # fmt: off
             45000: (1,  4),
             22500: (1,  8),
             22000: (1,  8),  # closest match is 22500
-             6000: (1, 30),
-             5500: (2, 16),
-             1000: (6, 30),
-            # fmt: on
+             6000: (1, 30),  # noqa: E131
+             5500: (2, 16),  # noqa: E131
+             1000: (6, 30),  # noqa: E131
         }
         for pwm_frequency, pwm_settings in values.items():
             computed = calculate_pwm_factors(pwm_frequency=pwm_frequency)
