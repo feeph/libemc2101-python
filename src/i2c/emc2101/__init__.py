@@ -86,11 +86,9 @@ class DutyCycleControlMode(Enum):
 
 
 class FanSpeedUnit(Enum):
-    # fmt: off
-    STEP    = 1  #   0..15
-    RPM     = 2  # 100..2000RPM
-    PERCENT = 3  #  20..100%
-    # fmt: on
+    STEP    = 1  # steps       0..15
+    RPM     = 2  # rpm       100..2000RPM
+    PERCENT = 3  # dutycycle  20..100%
 
 
 class PinSixMode(Enum):

@@ -42,7 +42,7 @@ def export_fan_config(fan_config: FanConfig) -> dict[str, str | int]:
             "model": fan_config.model,
             "control_mode": "VOLTAGE",
             "minimum_rpm": fan_config.minimum_rpm,
-            "minimum_rpm": fan_config.maximum_rpm,
+            "maximum_rpm": fan_config.maximum_rpm,
             "steps": fan_config.steps,
         }
     elif fan_config.rpm_control_mode == RpmControlMode.PWM:
@@ -72,7 +72,7 @@ def import_fan_config(fan_config: dict[str, str | int]) -> FanConfig:
             "model": fan_config["model"],
             "control_mode": RpmControlMode.VOLTAGE,
             "minimum_rpm": fan_config["minimum_rpm"],
-            "minimum_rpm": fan_config["maximum_rpm"],
+            "maximum_rpm": fan_config["maximum_rpm"],
             "steps": fan_config["steps"],
         }
         return FanConfig(**params)
@@ -84,7 +84,7 @@ def import_fan_config(fan_config: dict[str, str | int]) -> FanConfig:
             "minimum_duty_cycle": fan_config["minimum_duty_cycle"],
             "maximum_duty_cycle": fan_config["maximum_duty_cycle"],
             "minimum_rpm": fan_config["minimum_rpm"],
-            "minimum_rpm": fan_config["maximum_rpm"],
+            "maximum_rpm": fan_config["maximum_rpm"],
             "steps": fan_config["steps"],
         }
         return FanConfig(**params)

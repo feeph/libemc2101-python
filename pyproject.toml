@@ -14,12 +14,12 @@
 [tool.isort]
 # use the black profile but override "multi_line_output"
 profile           = "black"
-line_length       = 220
+line_length       = 250
 multi_line_output = 7
 src_paths         = ["src", "tests"]
 
 # https://pypi.org/project/autopep8/
 [tool.autopep8]
-max_line_length = 220
+max_line_length = 250
 ignore          = ["E221", "E241"]
 in-place = true

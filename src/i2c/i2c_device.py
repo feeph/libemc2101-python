@@ -3,7 +3,6 @@
 """
 
 import logging
-from typing import Dict, Optional
 
 import busio
 
