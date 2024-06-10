@@ -4,6 +4,7 @@
 
 from i2c.emc2101.scs.base_class import SpeedControlSetter
 
+
 class DAC(SpeedControlSetter):
 
     def __init__(self, minimum_duty_cycle: int, maximum_duty_cycle: int):
@@ -12,19 +13,21 @@ class DAC(SpeedControlSetter):
         self._duty_max = _convert_percentage2step(maximum_duty_cycle)
         # TODO derive mapping from fan config
         self._steps = {
-            #     RPM     %
-            3:	( 409,	 34),
-            4:	( 479,	 40),
-            5:	( 526,	 44),
-            6:	( 591,	 49),
-            7:	( 629,	 52),
-            8:	( 697,	 58),
-            9:	( 785,	 65),
-            10:	( 868,	 72),
-            11:	( 950,	 79),
-            12:	(1040,	 87),
-            13:	(1113,	 93),
-            14:	(1194,	100),
+            # fmt: off
+            #     RPM    %
+             3: ( 409,  34),
+             4: ( 479,  40),
+             5: ( 526,  44),
+             6: ( 591,  49),
+             7: ( 629,  52),
+             8: ( 697,  58),
+             9: ( 785,  65),
+            10: ( 868,  72),
+            11: ( 950,  79),
+            12: (1040,  87),
+            13: (1113,  93),
+            14: (1194, 100),
+            # fmt: on
         }
 
     def is_valid_step(self, value: int) -> bool:
@@ -40,7 +43,7 @@ class DAC(SpeedControlSetter):
             for _, percent_step in record:
                 if percent_step == 0:
                     percent_step = 1
-                deviation_new = abs(1-percent/percent_step)
+                deviation_new = abs(1 - percent / percent_step)
                 if deviation_cur is None or deviation_new < deviation_cur:
                     step_cur = step_new
                     deviation_cur = deviation_new
@@ -59,7 +62,7 @@ class DAC(SpeedControlSetter):
             for rpm_step, _ in record:
                 if rpm_step == 0:
                     rpm_step = 1
-                deviation_new = abs(1-rpm/rpm_step)
+                deviation_new = abs(1 - rpm / rpm_step)
                 if deviation_cur is None or deviation_new < deviation_cur:
                     step_cur = step_new
                     deviation_cur = deviation_new

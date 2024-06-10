@@ -13,7 +13,7 @@ class RpmControlMode(Enum):
 # basically a dataclass/attrs, but attrs are not available on CircuitPython
 class FanConfig:
 
-    def __init__(self, model: str, rpm_control_mode: RpmControlMode, minimum_duty_cycle: int, maximum_duty_cycle: int, minimum_rpm: int, maximum_rpm: int, pwm_frequency: int|None = None, steps: dict[int, tuple[int, int]]|None = None):
+    def __init__(self, model: str, rpm_control_mode: RpmControlMode, minimum_duty_cycle: int, maximum_duty_cycle: int, minimum_rpm: int, maximum_rpm: int, pwm_frequency: int | None = None, steps: dict[int, tuple[int, int]] | None = None):
         self.model = model
         self.rpm_control_mode = rpm_control_mode
         if rpm_control_mode == RpmControlMode.PWM:
@@ -36,7 +36,7 @@ class FanConfig:
         self.maximum_rpm = maximum_rpm
 
 
-def export_fan_config(fan_config: FanConfig) -> dict[str, str|int]:
+def export_fan_config(fan_config: FanConfig) -> dict[str, str | int]:
     if fan_config.rpm_control_mode == RpmControlMode.VOLTAGE:
         return {
             "model": fan_config.model,
@@ -66,7 +66,7 @@ def export_fan_config(fan_config: FanConfig) -> dict[str, str|int]:
         raise ValueError("unknown control type")
 
 
-def import_fan_config(fan_config: dict[str, str|int]) -> FanConfig:
+def import_fan_config(fan_config: dict[str, str | int]) -> FanConfig:
     if fan_config["control_mode"] == "VOLTAGE":
         params = {
             "model": fan_config["model"],

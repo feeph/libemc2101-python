@@ -3,6 +3,7 @@
 conversion-related functions
 """
 
+
 def convert_bytes2temperature(msb: int, lsb: int) -> float:
     """
     convert the provided temperature from internal value to float

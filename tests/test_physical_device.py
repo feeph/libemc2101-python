@@ -7,9 +7,9 @@ import unittest
 
 import board
 import busio
-import i2c.emc2101
 
-from i2c.emc2101 import DeviceConfig, FanConfig, FanSpeedUnit, PinSixMode, RpmControlMode, SpinUpStrength, SpinUpDuration, TemperatureLimitType
+import i2c.emc2101
+from i2c.emc2101 import DeviceConfig, FanConfig, FanSpeedUnit, PinSixMode, RpmControlMode, SpinUpDuration, SpinUpStrength, TemperatureLimitType  # NOQA
 
 
 @unittest.skipUnless(os.environ.get('TEST_EMC2101_CHIP', 'n') == 'y', "Skipping physical device test.")
@@ -21,19 +21,21 @@ class TestUsingMockedDevice(unittest.TestCase):
         i2c_bus = busio.I2C(scl=i2c_scl_pin, sda=i2c_sda_pin)
         device_config = DeviceConfig(rpm_control_mode=RpmControlMode.PWM, pin_six_mode=PinSixMode.TACHO)
         steps = {
+            # fmt: off
             #      %   RPM
-            3: (  34,  409),
-            4: (  40,  479),
-            5: (  44,  526),
-            6: (  49,  591),
-            7: (  52,  629),
-            8: (  58,  697),
-            9: (  65,  785),
+             3: ( 34,  409),
+             4: ( 40,  479),
+             5: ( 44,  526),
+             6: ( 49,  591),
+             7: ( 52,  629),
+             8: ( 58,  697),
+             9: ( 65,  785),
             10: ( 72,  868),
             11: ( 79,  950),
             12: ( 87, 1040),
             13: ( 93, 1113),
             14: (100, 1194),
+            # fmt: on
         }
         self.fan_config = FanConfig(model="generic PWM fan", pwm_frequency=22500, rpm_control_mode=RpmControlMode.PWM, minimum_duty_cycle=20, maximum_duty_cycle=100, minimum_rpm=100, maximum_rpm=2000, steps=steps)
         self.emc2101 = i2c.emc2101.Emc2101(i2c_bus=i2c_bus, device_config=device_config, fan_config=self.fan_config)

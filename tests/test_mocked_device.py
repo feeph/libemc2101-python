@@ -5,8 +5,7 @@
 import unittest
 
 import i2c.emc2101
-
-from i2c.emc2101 import DeviceConfig, FanConfig, FanSpeedUnit, PinSixMode, RpmControlMode, SpinUpStrength, SpinUpDuration, TemperatureLimitType
+from i2c.emc2101 import DeviceConfig, FanConfig, FanSpeedUnit, PinSixMode, RpmControlMode, SpinUpDuration, SpinUpStrength, TemperatureLimitType  # NOQA
 
 
 class SimulatedI2cBus:
@@ -68,19 +67,21 @@ class TestUsingMockedDevice(unittest.TestCase):
         # instantiate an object with a simulated I²C bus
         device_config = DeviceConfig(rpm_control_mode=RpmControlMode.PWM, pin_six_mode=PinSixMode.TACHO)
         steps = {
+            # fmt: off
             #      %   RPM
-            3: (  34,  409),
-            4: (  40,  479),
-            5: (  44,  526),
-            6: (  49,  591),
-            7: (  52,  629),
-            8: (  58,  697),
-            9: (  65,  785),
+             3: ( 34,  409),
+             4: ( 40,  479),
+             5: ( 44,  526),
+             6: ( 49,  591),
+             7: ( 52,  629),
+             8: ( 58,  697),
+             9: ( 65,  785),
             10: ( 72,  868),
             11: ( 79,  950),
             12: ( 87, 1040),
             13: ( 93, 1113),
             14: (100, 1194),
+            # fmt: on
         }
         self.fan_config = FanConfig(model="Mockinator 2000", pwm_frequency=22500, rpm_control_mode=RpmControlMode.PWM, minimum_duty_cycle=20, maximum_duty_cycle=100, minimum_rpm=100, maximum_rpm=2000, steps=steps)
         self.emc2101 = i2c.emc2101.Emc2101(i2c_bus=self.i2c_bus, device_config=device_config, fan_config=self.fan_config)

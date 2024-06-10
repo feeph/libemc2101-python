@@ -1,0 +1,25 @@
+# line lengths:
+#   - Excessive line lengths aren't good. But rather then automatically
+#     breaking them and turning into vertical blocks we want to see the
+#     nastiness sticking out prominently.
+#
+# black:
+#   - If the question is "Black?" the answer is "No!"
+#   - We use autopep8 to confirm compliance with PEP8, going beyond that
+#     is not necessary. If you want to apply black, then fine, go ahead.
+#     But we're not going to enforce or encourage it.
+
+# https://github.com/PyCQA/isort
+# https://pycqa.github.io/isort/
+[tool.isort]
+# use the black profile but override "multi_line_output"
+profile           = "black"
+line_length       = 220
+multi_line_output = 7
+src_paths         = ["src", "tests"]
+
+# https://pypi.org/project/autopep8/
+[tool.autopep8]
+max_line_length = 220
+ignore          = ["E221", "E241"]
+in-place = true

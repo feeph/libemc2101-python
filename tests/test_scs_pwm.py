@@ -8,23 +8,26 @@ import unittest
 from i2c.emc2101.fan_configs import FanConfig, RpmControlMode
 from i2c.emc2101.scs.pwm import PWM, calculate_pwm_factors
 
+
 class TestScsPwm(unittest.TestCase):
 
     def setUp(self):
         self.steps = {
+            # fmt: off
             #      %   RPM
-            3: (  34,  409),
-            4: (  40,  479),
-            5: (  44,  526),
-            6: (  49,  591),
-            7: (  52,  629),
-            8: (  58,  697),
-            9: (  65,  785),
+             3: ( 34,  409),
+             4: ( 40,  479),
+             5: ( 44,  526),
+             6: ( 49,  591),
+             7: ( 52,  629),
+             8: ( 58,  697),
+             9: ( 65,  785),
             10: ( 72,  868),
             11: ( 79,  950),
             12: ( 87, 1040),
             13: ( 93, 1113),
             14: (100, 1194),
+            # fmt: on
         }
         self.fan_config = FanConfig(model="fan", rpm_control_mode=RpmControlMode.PWM, pwm_frequency=22500, minimum_duty_cycle=0, maximum_duty_cycle=100, minimum_rpm=100, maximum_rpm=2000, steps=self.steps)
 
@@ -63,12 +66,14 @@ class TestScsPwm(unittest.TestCase):
 
     def test_pwm_calculations(self):
         values = {
+            # fmt: off
             45000: (1,  4),
             22500: (1,  8),
             22000: (1,  8),  # closest match is 22500
              6000: (1, 30),
              5500: (2, 16),
              1000: (6, 30),
+            # fmt: on
         }
         for pwm_frequency, pwm_settings in values.items():
             computed = calculate_pwm_factors(pwm_frequency=pwm_frequency)

@@ -3,12 +3,12 @@
 """
 
 import logging
-
 from typing import Dict, Optional
 
 import busio
 
 LH = logging.getLogger("i2c")
+
 
 class I2cDevice:
 
@@ -24,7 +24,7 @@ class I2cDevice:
         buf_r[0] = register
         buf_w = bytearray(1)
         max_tries = 3
-        for cur_try in range(1, 1+max_tries):
+        for cur_try in range(1, 1 + max_tries):
             try:
                 self._i2c_bus.writeto_then_readfrom(address=self._i2c_adr, buffer_out=buf_r, buffer_in=buf_w)
                 return buf_w[0]
@@ -41,7 +41,7 @@ class I2cDevice:
         buf[0] = register
         buf[1] = value & 0xFF
         max_tries = 3
-        for cur_try in range(1, 1+max_tries):
+        for cur_try in range(1, 1 + max_tries):
             try:
                 # function does not return any values
                 self._i2c_bus.writeto(address=self._i2c_adr, buffer=buf)

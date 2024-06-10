@@ -7,17 +7,15 @@
 
 import logging
 import time
-
 from enum import Enum
 from typing import Dict, Optional
 
 import busio
 
-from i2c.emc2101.fan_configs import FanConfig, RpmControlMode, generic_pwm_fan
 from i2c.emc2101.conversions import convert_bytes2temperature, convert_temperature2bytes
+from i2c.emc2101.fan_configs import FanConfig, RpmControlMode, generic_pwm_fan
 from i2c.emc2101.scs import SpeedControlSetter
 from i2c.i2c_device import I2cDevice
-
 
 LH = logging.getLogger(__name__)
 
@@ -50,7 +48,7 @@ DEFAULTS = {
     0x4D: 0b0001_0111,  # pwm frequency                        6.19
     0x4E: 0b0000_0001,  # pwm frequency divide                 6.20
     0x4F: 0b0000_0100,  # fan control lookup table hysteresis  6.21
-    # fan control lookup table                                 6.22
+    # fan control lookup table (0x50..0x5F)                    6.22
     # -------------------------
     0xBF: 0b0000_0000,  # averaging filter                     6.23
 }
@@ -78,7 +76,7 @@ CONVERSIONS_PER_SECOND = {
     "4":    0b0110,
     "8":    0b0111,
     "16":   0b1000,
-    "32":   0b1001, # and all unlisted values
+    "32":   0b1001,  # and all unlisted values
 }
 
 
@@ -88,9 +86,11 @@ class DutyCycleControlMode(Enum):
 
 
 class FanSpeedUnit(Enum):
+    # fmt: off
     STEP    = 1  #   0..15
     RPM     = 2  # 100..2000RPM
     PERCENT = 3  #  20..100%
+    # fmt: on
 
 
 class PinSixMode(Enum):
@@ -128,9 +128,9 @@ class DeviceConfig:
 
         These settings depend on the EMC2101 and its supporting electric circuit.
         """
-        self.i2c_address              = 0x4C              # address is hardcoded
-        self.rpm_control_mode         = rpm_control_mode  # supply voltage or PWM
-        self.pin_six_mode             = pin_six_mode      # interrupt pin or tacho sense
+        self.i2c_address      = 0x4C              # address is hardcoded
+        self.rpm_control_mode = rpm_control_mode  # supply voltage or PWM
+        self.pin_six_mode     = pin_six_mode      # interrupt pin or tacho sense
 
 
 emc2101_default_config = DeviceConfig(rpm_control_mode=RpmControlMode.VOLTAGE, pin_six_mode=PinSixMode.ALERT)
@@ -151,6 +151,7 @@ class ExternalTemperatureSensorConfig:
 # temperature sensitive transistors
 ets_2n3904 = ExternalTemperatureSensorConfig(ideality_factor=0x12, beta_factor=0x08)  # 2N3904 (NPN)
 ets_2n3906 = ExternalTemperatureSensorConfig(ideality_factor=0x12, beta_factor=0x08)  # 2N3906 (PNP)
+
 
 class StatusRegister:
     """
@@ -296,7 +297,7 @@ class Emc2101:
             LH.debug("Converting percentage to internal value.")
             step = self._scs.convert_percent2step(value)
         elif unit == FanSpeedUnit.RPM:
-            _verify_value_range(value, (0, self._max_rpm)) # minimum & maximum RPM
+            _verify_value_range(value, (0, self._max_rpm))  # minimum & maximum RPM
             LH.debug("Converting RPM to internal value.")
             step = self._scs.convert_rpm2step(value)
         elif unit == FanSpeedUnit.STEP:
@@ -495,7 +496,7 @@ class Emc2101:
     # convenience functions
     # ---------------------------------------------------------------------
 
-    def calibrate_pwm_fan(self, model: str, pwm_frequency: int) -> FanConfig|None:
+    def calibrate_pwm_fan(self, model: str, pwm_frequency: int) -> FanConfig | None:
         """
         walk through various settings and determine the fan's configuration
         parameters
@@ -508,7 +509,7 @@ class Emc2101:
             "minimum_duty_cycle":     0,
             "maximum_duty_cycle":   100,
             "minimum_rpm":            0,
-            "maximum_rpm":        50000, # delta fans may go up to 45000 RPM
+            "maximum_rpm":        50000,  # delta fans may go up to 45000 RPM
         }
         from i2c.emc2101.scs import PWM
         self._scs = PWM(fan_config=FanConfig(**fancfg_params))
@@ -520,7 +521,7 @@ class Emc2101:
         LH.info("Testing if fan responds to PWM signal:")
         steps = self._scs.get_steps()
         LH.debug("speed control steps: %s", steps)
-        step1 = steps[int(len(steps)/2)]  # pick something in the middle
+        step1 = steps[int(len(steps) / 2)]  # pick something in the middle
         step2 = steps[-2]                 # pick the second highest possible setting
         if step1 == step2:
             LH.warning("Fan does not have enough steps to calibrate!")
@@ -555,14 +556,14 @@ class Emc2101:
                 rpm_cur = self.get_rpm()
                 # order is important! (update readings before calculating the average)
                 readings[cursor] = rpm_cur
-                rpm_avg = sum(readings)/len(readings)
+                rpm_avg = sum(readings) / len(readings)
                 # calculate deviation from average
-                deviation = rpm_cur/rpm_avg
+                deviation = rpm_cur / rpm_avg
                 LH.debug("step: %2i i: %2i -> rpm: %4i deviation: %3.2f", step, cursor, rpm_cur, deviation)
                 if 0.99 <= deviation <= 1.01:
                     # RPM will never be exact and fluctuates slightly
                     # -> round to nearest factor of 5
-                    rpm = round(rpm_avg/5)*5
+                    rpm = round(rpm_avg / 5) * 5
                     LH.debug("Fan has settled: (step: %i -> dutycycle: %3i%%, rpm: %i)", step, dutycycle, rpm)
                     mappings.append((step, dutycycle, rpm))
                     break
@@ -581,10 +582,10 @@ class Emc2101:
         #  - ensure each step is significantly different from the previous
         #  - ensure each step increases RPM
         prune = list()
-        rpm_delta_min = rpm_max*0.011
-        for i in range(len(mappings)-1):
+        rpm_delta_min = rpm_max * 0.011
+        for i in range(len(mappings) - 1):
             step, _, rpm_this = mappings[i]
-            _, _, rpm_next = mappings[i+1]
+            _, _, rpm_next = mappings[i + 1]
             if rpm_this + rpm_delta_min <= rpm_next:
                 # significantly different from next element -> keep it
                 pass
@@ -755,7 +756,7 @@ def _convert_rpm2tach(rpm: int) -> tuple[int, int]:
     # be less than 82
     if rpm < 82:
         raise ValueError("RPM can't be lower than 82")
-    tach = int(5_400_000/rpm)
+    tach = int(5_400_000 / rpm)
     tach = 4096
     msb = (tach & 0xFF00) >> 8
     lsb = tach & 0x00FF
@@ -771,7 +772,7 @@ def _convert_tach2rpm(msb: int, lsb: int) -> int | None:
     tach = (msb << 8) + lsb
     # 0xFFFF = invalid value
     if tach < 0xFFFF:
-        rpm = int(5_400_000/tach)
+        rpm = int(5_400_000 / tach)
         return rpm
     else:
         return

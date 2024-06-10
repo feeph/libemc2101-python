@@ -8,7 +8,6 @@ import math
 from i2c.emc2101.fan_configs import FanConfig
 from i2c.emc2101.scs.base_class import SpeedControlSetter
 
-
 LH = logging.getLogger("i2c.emc2101")
 
 
@@ -54,7 +53,7 @@ class PWM(SpeedControlSetter):
         """
         return list(self._steps.keys())
 
-    def convert_percent2step(self, percent: int) -> int|None:
+    def convert_percent2step(self, percent: int) -> int | None:
         """
         find the closest step for the provided value
         """
@@ -64,7 +63,7 @@ class PWM(SpeedControlSetter):
             percent_step = record[0]
             if percent_step == 0:
                 percent_step = 1
-            deviation_new = abs(1-percent/percent_step)
+            deviation_new = abs(1 - percent / percent_step)
             if deviation_cur is None or deviation_new < deviation_cur:
                 step_cur = step_new
                 deviation_cur = deviation_new
@@ -73,7 +72,7 @@ class PWM(SpeedControlSetter):
     def convert_step2percent(self, step: int) -> int:
         return self._steps[step][0]
 
-    def convert_rpm2step(self, rpm: int) -> int|None:
+    def convert_rpm2step(self, rpm: int) -> int | None:
         """
         find the closest step for the provided value
         """
@@ -84,7 +83,7 @@ class PWM(SpeedControlSetter):
             if rpm_step is not None:
                 if rpm_step == 0:
                     rpm_step = 1
-                deviation_new = abs(1-rpm/rpm_step)
+                deviation_new = abs(1 - rpm / rpm_step)
                 if deviation_cur is None or deviation_new < deviation_cur:
                     step_cur = step_new
                     deviation_cur = deviation_new
@@ -98,7 +97,7 @@ def calculate_pwm_frequency(pwm_d: int, pwm_f: int) -> float:
     """
     calculate PWM frequency for provided PWM_D and PWM_F
     """
-    pwm_frequency = 360000/(2*pwm_f*pwm_d)
+    pwm_frequency = 360000 / (2 * pwm_f * pwm_d)
     return pwm_frequency
 
 
@@ -109,7 +108,7 @@ def calculate_pwm_factors(pwm_frequency: int) -> tuple[int, int]:
      - PWM_F maxes out at 31 (0x1F)
     """
     if 0 <= pwm_frequency <= 180000:
-        value1 = 360000/(2*pwm_frequency)
+        value1 = 360000 / (2 * pwm_frequency)
         pwm_d = math.ceil(value1 / 31)
         pwm_f = round(value1 / pwm_d)
         return (pwm_d, pwm_f)

@@ -6,6 +6,7 @@ import unittest
 
 from i2c.emc2101.conversions import convert_bytes2temperature, convert_temperature2bytes
 
+
 class TestConversions(unittest.TestCase):
 
     def test_convert_bytes2temperature(self):

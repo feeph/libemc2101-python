@@ -4,6 +4,7 @@
 
 from abc import ABC, abstractmethod
 
+
 class SpeedControlSetter(ABC):
     """
     abstract base class for speed control setters
