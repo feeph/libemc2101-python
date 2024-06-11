@@ -16,7 +16,7 @@ class SimulatedI2cBus:
     It is unable to simulate device-specific behavior! (e.g. duplicated registers)
     """
 
-    def __init__(self, state: dict[int, dict[int, dict[str, int]]]):
+    def __init__(self, state: dict[int, dict[int, int]]):
         """
         initialize a simulated I2C bus
 

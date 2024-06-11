@@ -5,8 +5,9 @@
 import os
 import unittest
 
-import board
-import busio
+# modules board and busio provide no type hints
+import board  # type: ignore
+import busio  # type: ignore
 
 import i2c.emc2101
 from i2c.emc2101 import DeviceConfig, FanConfig, FanSpeedUnit, PinSixMode, RpmControlMode, SpinUpDuration, SpinUpStrength, TemperatureLimitType  # NOQA
