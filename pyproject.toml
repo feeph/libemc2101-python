@@ -53,7 +53,8 @@ packages = [
 ]
 
 [tool.poetry.dependencies]
-python = "^3.11.0"
+# not compatible with Python 3.9, at least 3.10 is required
+python = "^3.10.0"
 adafruit-board-toolkit = "^1.1.0"
 gpiod = "^2.1.0"
 adafruit-circuitpython-busdevice = "^5.2.0"

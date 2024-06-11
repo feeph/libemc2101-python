@@ -22,8 +22,11 @@ class PWM(SpeedControlSetter):
 
     def __init__(self, fan_config: FanConfig):
         # configure duty cycle limits
-        self._duty_min = _convert_dutycycle_percentage2raw(fan_config.minimum_duty_cycle)
-        self._duty_max = _convert_dutycycle_percentage2raw(fan_config.maximum_duty_cycle)
+        if fan_config.minimum_duty_cycle is not None and fan_config.maximum_duty_cycle is not None:
+            self._duty_min = _convert_dutycycle_percentage2raw(fan_config.minimum_duty_cycle)
+            self._duty_max = _convert_dutycycle_percentage2raw(fan_config.maximum_duty_cycle)
+        else:
+            raise ValueError("PWM fans must configure minmum and maximum duty cycle")
         # calculate and configure PWM_D and PWM_F settings
         (pwm_d, pwm_f) = calculate_pwm_factors(pwm_frequency=fan_config.pwm_frequency)
         LH.debug("PWM frequency: %dHz -> PWM_D: %i PWM_F: %i", fan_config.pwm_frequency, pwm_d, pwm_f)

@@ -3,6 +3,7 @@
 """
 
 from enum import Enum
+from typing import TypedDict
 
 
 class RpmControlMode(Enum):
@@ -10,10 +11,14 @@ class RpmControlMode(Enum):
     PWM      = 2  # use pulse width modulation to control fan speed (4 pin fans)
 
 
+# define custom data type
+Steps = dict[int, tuple[int, int | None]]
+
+
 # basically a dataclass/attrs, but attrs are not available on CircuitPython
 class FanConfig:
 
-    def __init__(self, model: str, rpm_control_mode: RpmControlMode, minimum_duty_cycle: int, maximum_duty_cycle: int, minimum_rpm: int, maximum_rpm: int, pwm_frequency: int | None = None, steps: dict[int, tuple[int, int | None]] | None = None):
+    def __init__(self, model: str, rpm_control_mode: RpmControlMode, minimum_duty_cycle: int | None, maximum_duty_cycle: int | None, minimum_rpm: int, maximum_rpm: int, pwm_frequency: int | None = None, steps: Steps | None = None):
         self.model = model
         self.rpm_control_mode = rpm_control_mode
         if rpm_control_mode == RpmControlMode.PWM:
@@ -22,21 +27,35 @@ class FanConfig:
             else:
                 raise ValueError("must provide a PWM frequency for PWM fans")
         self.steps = steps
-        if minimum_duty_cycle > maximum_duty_cycle:
-            raise ValueError("minimum duty cycle must be smaller than maximum duty cycle")
-        if minimum_duty_cycle >= 0:
-            self.minimum_duty_cycle = minimum_duty_cycle
-        else:
-            raise ValueError("minimum duty cycle can't be negative")
-        if maximum_duty_cycle <= 100:
-            self.maximum_duty_cycle = maximum_duty_cycle
-        else:
-            raise ValueError("maximum duty cycle can't exceed 100%")
+        self.minimum_duty_cycle: int | None = None
+        self.maximum_duty_cycle: int | None = None
+        if minimum_duty_cycle is not None and maximum_duty_cycle is not None:
+            if minimum_duty_cycle > maximum_duty_cycle:
+                raise ValueError("minimum duty cycle must be smaller than maximum duty cycle")
+            if minimum_duty_cycle >= 0:
+                self.minimum_duty_cycle = minimum_duty_cycle
+            else:
+                raise ValueError("minimum duty cycle can't be negative")
+            if maximum_duty_cycle <= 100:
+                self.maximum_duty_cycle = maximum_duty_cycle
+            else:
+                raise ValueError("maximum duty cycle can't exceed 100%")
         self.minimum_rpm = minimum_rpm
         self.maximum_rpm = maximum_rpm
 
 
-def export_fan_config(fan_config: FanConfig) -> dict[str, str | int | dict[int, tuple[int, int]] | None]:
+class FanConfigArgs(TypedDict):
+    model: str
+    rpm_control_mode: RpmControlMode
+    minimum_duty_cycle: int | None
+    maximum_duty_cycle: int | None
+    minimum_rpm: int
+    maximum_rpm: int
+    pwm_frequency: int | None
+    steps: Steps | None
+
+
+def export_fan_config(fan_config: FanConfig) -> dict[str, str | int | Steps | None]:
     if fan_config.rpm_control_mode == RpmControlMode.VOLTAGE:
         return {
             "model": fan_config.model,
@@ -46,6 +65,7 @@ def export_fan_config(fan_config: FanConfig) -> dict[str, str | int | dict[int, 
             "steps": fan_config.steps,
         }
     elif fan_config.rpm_control_mode == RpmControlMode.PWM:
+        steps: dict[int, dict[str, int | None]] | None = None
         if fan_config.steps is not None:
             steps = {}
             for step, (dutycycle, rpm) in fan_config.steps.items():
@@ -53,8 +73,6 @@ def export_fan_config(fan_config: FanConfig) -> dict[str, str | int | dict[int, 
                     "dutycycle": dutycycle,
                     "rpm": rpm,
                 }
-        else:
-            steps = None
         return {
             "model": fan_config.model,
             "control_mode": "PWM",
@@ -63,34 +81,37 @@ def export_fan_config(fan_config: FanConfig) -> dict[str, str | int | dict[int, 
             "maximum_duty_cycle": fan_config.maximum_duty_cycle,
             "minimum_rpm": fan_config.minimum_rpm,
             "maximum_rpm": fan_config.maximum_rpm,
-            "steps": steps,
+            "steps": steps,  # type: ignore
         }
     else:
         raise ValueError("unknown control type")
 
 
-def import_fan_config(fan_config: dict[str, str | int]) -> FanConfig:
+def import_fan_config(fan_config: dict[str, str | int | Steps]) -> FanConfig:
     if fan_config["control_mode"] == "VOLTAGE":
-        params = {
-            "model": fan_config["model"],
-            "control_mode": RpmControlMode.VOLTAGE,
-            "minimum_rpm": fan_config["minimum_rpm"],
-            "maximum_rpm": fan_config["maximum_rpm"],
-            "steps": fan_config["steps"],
+        params_dac: FanConfigArgs = {
+            "model": str(fan_config["model"]),
+            "rpm_control_mode": RpmControlMode.VOLTAGE,
+            "pwm_frequency": None,
+            "minimum_duty_cycle": None,
+            "maximum_duty_cycle": None,
+            "minimum_rpm": fan_config["minimum_rpm"],  # type: ignore
+            "maximum_rpm": fan_config["maximum_rpm"],  # type: ignore
+            "steps": fan_config["steps"],  # type: ignore
         }
-        return FanConfig(**params)
+        return FanConfig(**params_dac)
     elif fan_config["control_mode"] == "PWM":
-        params = {
-            "model": fan_config["model"],
-            "control_mode": RpmControlMode.PWM,
-            "pwm_frequency": fan_config["pwm_frequency"],
-            "minimum_duty_cycle": fan_config["minimum_duty_cycle"],
-            "maximum_duty_cycle": fan_config["maximum_duty_cycle"],
-            "minimum_rpm": fan_config["minimum_rpm"],
-            "maximum_rpm": fan_config["maximum_rpm"],
-            "steps": fan_config["steps"],
+        params_pwm: FanConfigArgs = {
+            "model": str(fan_config["model"]),
+            "rpm_control_mode": RpmControlMode.PWM,
+            "pwm_frequency": fan_config["pwm_frequency"],  # type: ignore
+            "minimum_duty_cycle": fan_config["minimum_duty_cycle"],  # type: ignore
+            "maximum_duty_cycle": fan_config["maximum_duty_cycle"],  # type: ignore
+            "minimum_rpm": fan_config["minimum_rpm"],  # type: ignore
+            "maximum_rpm": fan_config["maximum_rpm"],  # type: ignore
+            "steps": fan_config["steps"],  # type: ignore
         }
-        return FanConfig(**params)
+        return FanConfig(**params_pwm)
     else:
         raise ValueError("unknown control type")
 

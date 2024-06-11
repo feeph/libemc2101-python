@@ -10,10 +10,11 @@ import time
 from enum import Enum
 from typing import Any
 
-import busio
+# module busio provides no type hints
+import busio  # type: ignore
 
 from i2c.emc2101.conversions import convert_bytes2temperature, convert_temperature2bytes
-from i2c.emc2101.fan_configs import FanConfig, RpmControlMode, generic_pwm_fan
+from i2c.emc2101.fan_configs import FanConfig, FanConfigArgs, RpmControlMode, Steps, generic_pwm_fan
 from i2c.emc2101.scs import SpeedControlSetter
 from i2c.i2c_device import I2cDevice
 
@@ -278,7 +279,7 @@ class Emc2101:
         else:
             return None
 
-    def get_fixed_speed(self, unit: FanSpeedUnit = FanSpeedUnit.PERCENT) -> int:
+    def get_fixed_speed(self, unit: FanSpeedUnit = FanSpeedUnit.PERCENT) -> int | None:
         step = self._i2c_device.read_register(0x4C)
         if unit == FanSpeedUnit.PERCENT:
             return self._scs.convert_step2percent(step)
@@ -287,7 +288,7 @@ class Emc2101:
         else:
             return step
 
-    def set_fixed_speed(self, value: int, unit: FanSpeedUnit = FanSpeedUnit.PERCENT, disable_lut: bool = False) -> int:
+    def set_fixed_speed(self, value: int, unit: FanSpeedUnit = FanSpeedUnit.PERCENT, disable_lut: bool = False) -> int | None:
         """
         set the fan speed
          - clamp to minimum/maximum as defined by the fan configuration
@@ -297,11 +298,25 @@ class Emc2101:
         if unit == FanSpeedUnit.PERCENT:
             _verify_value_range(value, (0, 100))
             LH.debug("Converting percentage to internal value.")
-            step = self._scs.convert_percent2step(value)
+            result = self._scs.convert_percent2step(value)
+            if result is not None:
+                step = result
+            else:
+                LH.error("Unable to process provided percentage value '%i'!", value)
+                # read current value and return ()
+                step_cur = self._i2c_device.read_register(0x4C)
+                return self._scs.convert_step2percent(step_cur)
         elif unit == FanSpeedUnit.RPM:
             _verify_value_range(value, (0, self._max_rpm))  # minimum & maximum RPM
             LH.debug("Converting RPM to internal value.")
-            step = self._scs.convert_rpm2step(value)
+            result = self._scs.convert_rpm2step(value)
+            if result is not None:
+                step = result
+            else:
+                LH.error("Unable to process provided RPM value '%i'!", value)
+                # read current value and return ()
+                step_cur = self._i2c_device.read_register(0x4C)
+                return self._scs.convert_step2rpm(step_cur)
         elif unit == FanSpeedUnit.STEP:
             if self._scs.is_valid_step(value):
                 step = value
@@ -346,7 +361,10 @@ class Emc2101:
                         raise ValueError("invalid step value")
                 else:
                     raise ValueError("unknown value type")
-                lut_table[temp] = step
+                if step is not None:
+                    lut_table[temp] = step
+                else:
+                    LH.error("Unable to process provided value '%i'! Skipping.", value)
             # -------------------------------------------------------------
             # 0x50..0x5f (8 x 2 registers; temp->duty)
             offset = 0
@@ -387,7 +405,7 @@ class Emc2101:
         """
         returns all available temperature conversion rates
         """
-        return CONVERSIONS_PER_SECOND.keys()
+        return list(CONVERSIONS_PER_SECOND.keys())
 
     def set_temperature_conversion_rate(self, conversion_rate: str) -> bool:
         """
@@ -479,7 +497,7 @@ class Emc2101:
         (this is useful to debug the lookup table)
         """
         # write register
-        self._i2c_device.write_register(0x0C, temperature)
+        self._i2c_device.write_register(0x0C, round(temperature))
         # force reading from register
         fan_config = self._i2c_device.read_register(0x4A)
         self._i2c_device.write_register(0x4A, fan_config | 0b0100_0000)
@@ -504,7 +522,7 @@ class Emc2101:
         parameters
         """
         LH.info("Calibrating fan parameters.")
-        fancfg_params = {
+        fancfg_params: FanConfigArgs = {
             "model":              model,
             "rpm_control_mode":   RpmControlMode.PWM,
             "pwm_frequency":      pwm_frequency,
@@ -512,22 +530,24 @@ class Emc2101:
             "maximum_duty_cycle":   100,
             "minimum_rpm":            0,
             "maximum_rpm":        50000,  # delta fans may go up to 45000 RPM
+            "steps":              None,
         }
+        fan_config = FanConfig(**fancfg_params)
         from i2c.emc2101.scs import PWM
-        self._scs = PWM(fan_config=FanConfig(**fancfg_params))
+        self._scs = PWM(fan_config=fan_config)
         # -----------------------------------------------------------------
         LH.debug("Disabling gradual speed rampup.")
         # TODO disable gradual rampup
         # TODO set initial driver strength to 100%
         # -----------------------------------------------------------------
         LH.info("Testing if fan responds to PWM signal:")
-        steps = self._scs.get_steps()
-        LH.debug("speed control steps: %s", steps)
-        step1 = steps[int(len(steps) / 2)]  # pick something in the middle
-        step2 = steps[-2]                 # pick the second highest possible setting
+        steps_list = self._scs.get_steps()
+        LH.debug("speed control steps: %s", steps_list)
+        step1 = steps_list[int(len(steps_list) / 2)]  # pick something in the middle
+        step2 = steps_list[-2]                        # pick the second highest possible setting
         if step1 == step2:
             LH.warning("Fan does not have enough steps to calibrate!")
-            return
+            return None
         self.set_fixed_speed(step1, unit=FanSpeedUnit.STEP)
         time.sleep(5)
         dutycycle1 = self._scs.convert_step2percent(step1)
@@ -537,17 +557,20 @@ class Emc2101:
         time.sleep(5)
         dutycycle2 = self._scs.convert_step2percent(step2)
         rpm2 = self.get_rpm()
+        if rpm1 is None or rpm2 is None:
+            LH.error("Unable to get a reliable RPM reading. Aborting.")
+            return None
         LH.debug("dutycycle: %i%% -> RPM: %i", dutycycle2, rpm2)
         if rpm1 * 100 / rpm2 < 96:
             LH.info("Yes, it does. Observed an RPM change in response to PWM signal. (%i%%: %i -> %i%%: %i RPM)", dutycycle1, rpm1, dutycycle2, rpm2)
         else:
             LH.warning("Failed to observe a significant speed change in response to PWM signal! Aborting.")
             LH.warning("Please verify wiring and configuration.")
-            return
+            return None
         # -----------------------------------------------------------------
         LH.info("Mapping PWM dutycycle to RPM. Please wait.")
         mappings = list()
-        for step in self._scs.get_steps():
+        for step in steps_list:
             dutycycle = self._scs.convert_step2percent(step)
             # set fan speed and wait for the speed to settle
             self.set_fixed_speed(step, unit=FanSpeedUnit.STEP)
@@ -556,21 +579,25 @@ class Emc2101:
             for i in range(24):
                 cursor = i % len(readings)
                 rpm_cur = self.get_rpm()
-                # order is important! (update readings before calculating the average)
-                readings[cursor] = rpm_cur
-                rpm_avg = sum(readings) / len(readings)
-                # calculate deviation from average
-                deviation = rpm_cur / rpm_avg
-                LH.debug("step: %2i i: %2i -> rpm: %4i deviation: %3.2f", step, cursor, rpm_cur, deviation)
-                if 0.99 <= deviation <= 1.01:
-                    # RPM will never be exact and fluctuates slightly
-                    # -> round to nearest factor of 5
-                    rpm = round(rpm_avg / 5) * 5
-                    LH.debug("Fan has settled: (step: %i -> dutycycle: %3i%%, rpm: %i)", step, dutycycle, rpm)
-                    mappings.append((step, dutycycle, rpm))
-                    break
+                if rpm_cur is not None:
+                    # order is important! (update readings before calculating the average)
+                    readings[cursor] = rpm_cur
+                    rpm_avg = sum(readings) / len(readings)
+                    # calculate deviation from average
+                    deviation = rpm_cur / rpm_avg
+                    LH.debug("step: %2i i: %2i -> rpm: %4i deviation: %3.2f", step, cursor, rpm_cur, deviation)
+                    if 0.99 <= deviation <= 1.01:
+                        # RPM will never be exact and fluctuates slightly
+                        # -> round to nearest factor of 5
+                        rpm = round(rpm_avg / 5) * 5
+                        LH.debug("Fan has settled: (step: %i -> dutycycle: %3i%%, rpm: %i)", step, dutycycle, rpm)
+                        mappings.append((step, dutycycle, rpm))
+                        break
+                    else:
+                        time.sleep(0.5)
                 else:
-                    time.sleep(0.5)
+                    LH.error("Unable to get a reliable RPM reading. Aborting.")
+                    return None
             else:
                 LH.warning("Fan never settled! (step: %i -> dutycycle: %3i%%, rpm: <n/a>)", step, dutycycle)
                 mappings.append((step, dutycycle, rpm))
@@ -595,7 +622,7 @@ class Emc2101:
                 # within range of next element -> prune it
                 prune.append(step)
 
-        steps = {}
+        steps: Steps = dict()
         for step, dutycycle, rpm in mappings:
             rpm_percent = rpm * 100 / rpm_max
             LH.info("step: %2i dutycycle: %3i%% -> RPM: %5i (%3.0f%%)", step, dutycycle, rpm, rpm_percent)
@@ -605,8 +632,8 @@ class Emc2101:
         # update initial parameters with detected values
         fancfg_params["minimum_duty_cycle"] = min([dutycycle for (_, (dutycycle, _)) in steps.items()])  # e.g. 20%
         fancfg_params["maximum_duty_cycle"] = max([dutycycle for (_, (dutycycle, _)) in steps.items()])  # typically 100%
-        fancfg_params["minimum_rpm"] = min([rpm for (_, (_, rpm)) in steps.items()])
-        fancfg_params["maximum_rpm"] = max([rpm for (_, (_, rpm)) in steps.items()])
+        fancfg_params["minimum_rpm"] = min([rpm for (_, (_, rpm)) in steps.items() if rpm is not None])
+        fancfg_params["maximum_rpm"] = max([rpm for (_, (_, rpm)) in steps.items() if rpm is not None])
         fancfg_params["steps"] = steps
         return FanConfig(**fancfg_params)
 
@@ -655,7 +682,7 @@ class Emc2101:
         else:
             LH.error("Unable to read device status register!")
 
-    def _configure_speed_control_setter(self, i2c_device: I2cDevice, device_config: DeviceConfig, fan_config: FanConfig) -> SpeedControlSetter | None:
+    def _configure_speed_control_setter(self, i2c_device: I2cDevice, device_config: DeviceConfig, fan_config: FanConfig) -> SpeedControlSetter:
         """
         The supporting circuit for EMC2101 is wired for a specific configuration.
         If we connect a fan that expects a different configuration it won't work.
@@ -684,8 +711,7 @@ class Emc2101:
         elif device_config.rpm_control_mode == RpmControlMode.PWM:
             # emc2101: PWM, fan: supply voltage -> will not work
             if fan_config.rpm_control_mode == RpmControlMode.VOLTAGE:
-                LH.error("EMC2101 uses PWM but fan is controlled via supply voltage! RPM control is disabled!")
-                return None
+                raise ValueError("EMC2101 uses PWM but fan is controlled via supply voltage!")
             # emc2101: PWM, fan: PWM -> works
             elif device_config.rpm_control_mode == RpmControlMode.PWM:
                 LH.info("EMC2101 and connected fan both use PWM to control fan speed. Good.")
