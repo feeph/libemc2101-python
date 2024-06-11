@@ -13,8 +13,6 @@ import sys
 
 import board
 import busio
-import colorama
-import coloredlogs
 import yaml
 
 from i2c.emc2101 import DeviceConfig, Emc2101, PinSixMode, RpmControlMode, generic_pwm_fan
@@ -24,6 +22,8 @@ LH = logging.getLogger("main")
 
 
 if __name__ == "__main__":
+    logging.basicConfig(format='%(levelname).1s: %(message)s', level=logging.INFO)
+
     parser = argparse.ArgumentParser(prog="Test1", description="identify fan parameters")
     parser.add_argument("-f", "--pwm-frequency", type=int, default=22500)
     parser.add_argument("-v", "--verbose", action="store_true")
@@ -31,12 +31,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.verbose:
-        verbosity = "DEBUG"
-    else:
-        verbosity = "INFO"
-
-    colorama.init()
-    coloredlogs.install(level=verbosity, fmt="%(levelname).1s: %(message)s")
+        LH.setLevel(level=logging.DEBUG)
 
     i2c_scl_pin = board.SCL
     i2c_sda_pin = board.SDA

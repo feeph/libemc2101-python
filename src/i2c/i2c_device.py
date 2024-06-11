@@ -29,9 +29,9 @@ class I2cDevice:
                 return buf_w[0]
             except OSError as e:
                 # [Errno 121] Remote I/O error
-                LH.warning("[%s] Failed to read register 0x%02X (%i/%i): %s",  __name__, register, cur_try, max_tries, e)
+                LH.debug("[%s] Failed to read register 0x%02X (%i/%i): %s",  __name__, register, cur_try, max_tries, e)
             except RuntimeError as e:
-                LH.error("[%s] Unable to read register 0x%02X (%i/%i): %s", __name__, register, cur_try, max_tries, e)
+                LH.debug("[%s] Unable to read register 0x%02X (%i/%i): %s", __name__, register, cur_try, max_tries, e)
         else:
             LH.error("[%s] Unable to read register 0x%02X after %i attempts. Giving up.", __name__, register, max_tries)
             return None

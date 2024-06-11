@@ -23,3 +23,47 @@ src_paths         = ["src", "tests"]
 max_line_length = 250
 ignore          = ["E221", "E241"]
 in-place = true
+
+# https://python-poetry.org/docs/basic-usage/
+[tool.poetry]
+name = "feeph-i2c-emc2101"
+version = "0.0.0"
+description = "library for EMC2101 fan control chip"
+authors = [
+    "Feeph Aifeimei <55798703+feeph@users.noreply.github.com>",
+]
+keywords = [
+    "emc2101",
+    "i2c",
+    "smbus",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Topic :: System :: Hardware :: Inter-Integrated Circuit",
+    "Typing :: Typed",
+]
+readme = "README.md"
+license = "GPL-3.0-or-later"
+#homepage =
+repository = "https://github.com/feeph/libi2c-emc2101-python/"
+#documentation =
+packages = [
+    {include = "i2c", from = "src"}
+]
+
+[tool.poetry.dependencies]
+python = "^3.11.0"
+adafruit-board-toolkit = "^1.1.0"
+gpiod = "^2.1.0"
+adafruit-circuitpython-busdevice = "^5.2.0"
+pyyaml = "^6.0.0"
+
+[tool.poetry.urls]
+"Bug Tracker" = "https://github.com/feeph/libi2c-emc2101-python/issues"
+
+[build-system]
+requires = [
+    "poetry-core"
+]
+build-backend = "poetry.core.masonry.api"
