@@ -27,7 +27,7 @@ in-place = true
 # https://python-poetry.org/docs/basic-usage/
 [tool.poetry]
 name = "feeph-i2c-emc2101"
-version = "0.0.0"
+version = "0.1.0"
 description = "library for EMC2101 fan control chip"
 authors = [
     "Feeph Aifeimei <55798703+feeph@users.noreply.github.com>",
