@@ -14,4 +14,3 @@ adafruit-board-toolkit           ~= 1.1.0
 gpiod                            ~= 2.1.0
 
 adafruit-circuitpython-busdevice ~= 5.2.0
-adafruit-circuitpython-emc2101   ~= 1.2.0
