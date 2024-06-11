@@ -15,8 +15,7 @@ import board
 import busio
 import yaml
 
-from i2c.emc2101 import DeviceConfig, Emc2101, PinSixMode, RpmControlMode, generic_pwm_fan
-from i2c.emc2101.fan_configs import export_fan_config
+from i2c.emc2101 import calibrate_pwm_fan, export_fan_config
 
 LH = logging.getLogger("main")
 
@@ -33,20 +32,15 @@ if __name__ == "__main__":
     if args.verbose:
         LH.setLevel(level=logging.DEBUG)
 
-    i2c_scl_pin = board.SCL
-    i2c_sda_pin = board.SDA
-    i2c_bus = busio.I2C(scl=i2c_scl_pin, sda=i2c_sda_pin)
-    device_config = DeviceConfig(rpm_control_mode=RpmControlMode.PWM, pin_six_mode=PinSixMode.TACHO)
-    emc2101 = Emc2101(i2c_bus=i2c_bus, device_config=device_config, fan_config=generic_pwm_fan)
+    i2c_bus = busio.I2C(scl=board.SCL, sda=board.SDA)
+    fan_profile = calibrate_pwm_fan(i2c_bus=i2c_bus, model=args.model, pwm_frequency=args.pwm_frequency)
+    if fan_profile is not None:
+        LH.info("minimum RPM:        %4iRPM", fan_profile.minimum_rpm)
+        LH.info("maximum RPM:        %4iRPM", fan_profile.maximum_rpm)
+        LH.info("minimum duty cycle: %4i%%", fan_profile.minimum_duty_cycle)
+        LH.info("maximum duty cycle: %4i%%", fan_profile.maximum_duty_cycle)
 
-    fan_config = emc2101.calibrate_pwm_fan(model=args.model, pwm_frequency=args.pwm_frequency)
-    if fan_config is not None:
-        LH.info("minimum RPM:        %4iRPM", fan_config.minimum_rpm)
-        LH.info("maximum RPM:        %4iRPM", fan_config.maximum_rpm)
-        LH.info("minimum duty cycle: %4i%%", fan_config.minimum_duty_cycle)
-        LH.info("maximum duty cycle: %4i%%", fan_config.maximum_duty_cycle)
-
-        data = export_fan_config(fan_config=fan_config)
+        data = export_fan_config(fan_config=fan_profile)
         print("---")
         print(yaml.dump(data, indent=4))
         sys.exit(0)

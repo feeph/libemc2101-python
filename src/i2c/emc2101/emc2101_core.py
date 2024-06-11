@@ -269,8 +269,7 @@ class Emc2101_core:
 
         (pin 6 must be configured for tacho mode)
         """
-        status_register = self._i2c_device.read_register(0x02)
-        if status_register & 0b0000_0001:
+        if self._uses_tacho_mode():
             # get tacho readings
             # (the order of is important; see datasheet section 6.1 for details)
             lsb = self._i2c_device.read_register(0x46)  # TACH Reading Low Byte, must be read first!
@@ -555,6 +554,13 @@ class Emc2101_core:
 
     def _has_sensor_fault(self):
         return self._i2c_device.read_register(0x02) & 0b0000_0100
+
+    def _uses_alert_mode(self) -> bool:
+        return not self._uses_tacho_mode()
+
+    def _uses_tacho_mode(self) -> bool:
+        status_register = self._i2c_device.read_register(0x03)
+        return bool(status_register & 0b0000_0100)
 
 
 # def parse_fanconfig_register(value: int) -> dict[str, Any]:

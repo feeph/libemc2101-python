@@ -17,17 +17,13 @@ tool-based development support as possible.
 # import busio
 # import yaml
 #
-# from i2c.emc2101.emc2101_pwm import DeviceConfig, Emc2101_PWM, PinSixMode, RpmControlMode
-# from i2c.emc2101.fan_config import export_fan_config
+# from i2c.emc2101 import calibrate_pwm_fan, export_fan_config
 #
 # i2c_bus = busio.I2C(scl=board.SCL, sda=board.SDA)
+# fan_profile = calibrate_pwm_fan(i2c_bus=i2c_bus, model="My PWM Fan")
 #
-# device_config = DeviceConfig(rpm_control_mode=RpmControlMode.PWM, pin_six_mode=PinSixMode.TACHO)
-# emc2101 = Emc2101_PWM(i2c_bus=i2c_bus, device_config=device_config, fan_config=generic_pwm_fan)
-# my_fan = emc2101.calibrate_pwm_fan(model="My fan", pwm_frequency=22500)
-#
-# with open('fan_config.yaml', 'w') as fh:
-#   yaml.dump(export_fan_config(my_fan), fh)
+# with open('my_pwm_fan.yaml', 'w') as fh:
+#   yaml.dump(export_fan_config(fan_profile), fh)
 # -------------------------------------------------------------------------
 
 # control a PWM fan
@@ -35,19 +31,21 @@ tool-based development support as possible.
 # -------------------------------------------------------------------------
 # import board
 # import busio
+# import yaml
 #
-# from i2c.emc2101.emc2101_pwm import DeviceConfig, Emc2101_PWM, PinSixMode, RpmControlMode
+# from i2c.emc2101 import DeviceConfig, Emc2101_PWM, PinSixMode, RpmControlMode
 #
-# with open('fan_config.yaml', 'r') as fh:
-#   my_fan = import_fan_config(yaml.load(fh))
+# with open('my_pwm_fan.yaml', 'r') as fh:
+#   fan_profile = import_fan_config(yaml.load(fh))
 #
-# device_config = DeviceConfig(rpm_control_mode=RpmControlMode.PWM, pin_six_mode=PinSixMode.TACHO)
-# emc2101 = Emc2101_PWM(i2c_bus=i2c_bus, device_config=device_config, fan_config=my_fan)
+# i2c_bus = busio.I2C(scl=board.SCL, sda=board.SDA)
+# device_config = DeviceConfig(pin_six_mode=PinSixMode.TACHO, rpm_control_mode=RpmControlMode.PWM)
+# emc2101 = Emc2101_PWM(i2c_bus=i2c_bus, device_config=device_config, fan_config=fan_profile)
 # print("RPM:", emc2101.get_rpm()
 # -------------------------------------------------------------------------
 
 # the following imports are provided for user convenience
 # flake8: noqa: F401
 from i2c.emc2101.emc2101_core import CONVERSIONS_PER_SECOND, DEFAULTS, SpinUpDuration, SpinUpStrength
-from i2c.emc2101.emc2101_pwm import DeviceConfig, Emc2101_PWM, ExternalTemperatureSensorConfig, FanSpeedUnit, PinSixMode, TemperatureLimitType, emc2101_default_config, ets_2n3904, ets_2n3906
-from i2c.emc2101.fan_configs import FanConfig, RpmControlMode, Steps, generic_pwm_fan
+from i2c.emc2101.emc2101_pwm import DeviceConfig, Emc2101_PWM, ExternalTemperatureSensorConfig, FanSpeedUnit, PinSixMode, TemperatureLimitType, calibrate_pwm_fan, emc2101_default_config, ets_2n3904, ets_2n3906
+from i2c.emc2101.fan_configs import FanConfig, RpmControlMode, Steps, export_fan_config, generic_pwm_fan

@@ -15,7 +15,7 @@ from typing import Any
 import busio  # type: ignore
 
 from i2c.emc2101.emc2101_core import CONVERSIONS_PER_SECOND, Emc2101_core, SpinUpDuration, SpinUpStrength
-from i2c.emc2101.fan_configs import FanConfig, FanConfigArgs, RpmControlMode, Steps, generic_pwm_fan
+from i2c.emc2101.fan_configs import FanConfig, RpmControlMode, Steps, generic_pwm_fan
 from i2c.i2c_device import I2cDevice
 
 LH = logging.getLogger(__name__)
@@ -372,128 +372,6 @@ class Emc2101_PWM:
     # convenience functions
     # ---------------------------------------------------------------------
 
-    # TODO simplify usage of calibrate_pwm_fan()
-    def calibrate_pwm_fan(self, model: str, pwm_frequency: int) -> FanConfig | None:
-        """
-        walk through various settings and determine the fan's configuration
-        parameters
-        """
-        LH.info("Calibrating fan parameters.")
-        fancfg_params: FanConfigArgs = {
-            "model":              model,
-            "rpm_control_mode":   RpmControlMode.PWM,
-            "pwm_frequency":      pwm_frequency,
-            "minimum_duty_cycle":     0,
-            "maximum_duty_cycle":   100,
-            "minimum_rpm":            0,
-            "maximum_rpm":        50000,  # delta fans may go up to 45000 RPM
-            "steps":              None,
-        }
-        fan_config = FanConfig(**fancfg_params)
-        from i2c.emc2101.scs import PWM
-        self._scs = PWM(fan_config=fan_config)
-        # -----------------------------------------------------------------
-        LH.debug("Disabling gradual speed rampup.")
-        # TODO disable gradual rampup
-        # TODO set initial driver strength to 100%
-        # -----------------------------------------------------------------
-        LH.info("Testing if fan responds to PWM signal:")
-        steps_list = self._scs.get_steps()
-        LH.debug("speed control steps: %s", steps_list)
-        step1 = steps_list[int(len(steps_list) / 2)]  # pick something in the middle
-        step2 = steps_list[-2]                        # pick the second highest possible setting
-        if step1 == step2:
-            LH.warning("Fan does not have enough steps to calibrate!")
-            return None
-        self.set_fixed_speed(step1, unit=FanSpeedUnit.STEP)
-        time.sleep(5)
-        dutycycle1 = self._scs.convert_step2percent(step1)
-        rpm1 = self.get_rpm()
-        LH.debug("dutycycle: %i%% -> RPM: %i", dutycycle1, rpm1)
-        self.set_fixed_speed(step2, unit=FanSpeedUnit.STEP)
-        time.sleep(5)
-        dutycycle2 = self._scs.convert_step2percent(step2)
-        rpm2 = self.get_rpm()
-        if rpm1 is None or rpm2 is None:
-            LH.error("Unable to get a reliable RPM reading. Aborting.")
-            return None
-        LH.debug("dutycycle: %i%% -> RPM: %i", dutycycle2, rpm2)
-        if rpm1 * 100 / rpm2 < 96:
-            LH.info("Yes, it does. Observed an RPM change in response to PWM signal. (%i%%: %i -> %i%%: %i RPM)", dutycycle1, rpm1, dutycycle2, rpm2)
-        else:
-            LH.warning("Failed to observe a significant speed change in response to PWM signal! Aborting.")
-            LH.warning("Please verify wiring and configuration.")
-            return None
-        # -----------------------------------------------------------------
-        LH.info("Mapping PWM dutycycle to RPM. Please wait.")
-        mappings = list()
-        for step in steps_list:
-            dutycycle = self._scs.convert_step2percent(step)
-            # set fan speed and wait for the speed to settle
-            self.set_fixed_speed(step, unit=FanSpeedUnit.STEP)
-            time.sleep(1)
-            readings = [99999, 99999, 99999]
-            for i in range(24):
-                cursor = i % len(readings)
-                rpm_cur = self.get_rpm()
-                if rpm_cur is not None:
-                    # order is important! (update readings before calculating the average)
-                    readings[cursor] = rpm_cur
-                    rpm_avg = sum(readings) / len(readings)
-                    # calculate deviation from average
-                    deviation = rpm_cur / rpm_avg
-                    LH.debug("step: %2i i: %2i -> rpm: %4i deviation: %3.2f", step, cursor, rpm_cur, deviation)
-                    if 0.99 <= deviation <= 1.01:
-                        # RPM will never be exact and fluctuates slightly
-                        # -> round to nearest factor of 5
-                        rpm = round(rpm_avg / 5) * 5
-                        LH.debug("Fan has settled: (step: %i -> dutycycle: %3i%%, rpm: %i)", step, dutycycle, rpm)
-                        mappings.append((step, dutycycle, rpm))
-                        break
-                    else:
-                        time.sleep(0.5)
-                else:
-                    LH.error("Unable to get a reliable RPM reading. Aborting.")
-                    return None
-            else:
-                LH.warning("Fan never settled! (step: %i -> dutycycle: %3i%%, rpm: <n/a>)", step, dutycycle)
-                mappings.append((step, dutycycle, rpm))
-
-        # determine maximum RPM
-        rpm_max = max([rpm for (_, _, rpm) in mappings])
-        LH.info("Maximum RPM: %i", rpm_max)
-
-        # prune steps
-        #  - multiple steps may result in the same RPM (e.g. minimum RPM)
-        #  - ensure each step is significantly different from the previous
-        #  - ensure each step increases RPM
-        prune = list()
-        rpm_delta_min = rpm_max * 0.011
-        for i in range(len(mappings) - 1):
-            step, _, rpm_this = mappings[i]
-            _, _, rpm_next = mappings[i + 1]
-            if rpm_this + rpm_delta_min <= rpm_next:
-                # significantly different from next element -> keep it
-                pass
-            else:
-                # within range of next element -> prune it
-                prune.append(step)
-
-        steps: Steps = dict()
-        for step, dutycycle, rpm in mappings:
-            rpm_percent = rpm * 100 / rpm_max
-            LH.info("step: %2i dutycycle: %3i%% -> RPM: %5i (%3.0f%%)", step, dutycycle, rpm, rpm_percent)
-            if step not in prune:
-                steps[step] = (dutycycle, rpm)
-
-        # update initial parameters with detected values
-        fancfg_params["minimum_duty_cycle"] = min([dutycycle for (_, (dutycycle, _)) in steps.items()])  # e.g. 20%
-        fancfg_params["maximum_duty_cycle"] = max([dutycycle for (_, (dutycycle, _)) in steps.items()])  # typically 100%
-        fancfg_params["minimum_rpm"] = min([rpm for (_, (_, rpm)) in steps.items() if rpm is not None])
-        fancfg_params["maximum_rpm"] = max([rpm for (_, (_, rpm)) in steps.items() if rpm is not None])
-        fancfg_params["steps"] = steps
-        return FanConfig(**fancfg_params)
-
     def read_fancfg_register(self) -> int:
         # described in datasheet section 6.16 "Fan Configuration Register"
         # 0b00000000
@@ -524,6 +402,123 @@ class Emc2101_PWM:
         dif = ets_config.diode_ideality_factor
         bcf = ets_config.beta_compensation_factor
         self._emc2101.configure_external_temperature_sensor(dif=dif, bcf=bcf)
+
+
+def calibrate_pwm_fan(i2c_bus: busio.I2C, model: str, pwm_frequency: int = 22500) -> FanConfig | None:
+    """
+    walk through various settings and determine the fan's configuration
+    parameters
+    """
+    LH.info("Calibrating fan parameters.")
+    pwm_d, pwm_f = calculate_pwm_factors(pwm_frequency=pwm_frequency)
+    steps_list = list(range(pwm_f * 2))
+    emc2101 = Emc2101_core(i2c_bus=i2c_bus)
+    emc2101.configure_pin_six_as_tacho()
+    emc2101.configure_pwm_control(pwm_d=pwm_d, pwm_f=pwm_f, step_max=max(steps_list))
+    # -----------------------------------------------------------------
+    LH.debug("Disabling gradual speed rampup.")
+    # TODO disable gradual rampup
+    # TODO set initial driver strength to 100%
+    # -----------------------------------------------------------------
+    LH.info("Testing if fan responds to PWM signal:")
+    LH.debug("speed control steps: %s", steps_list)
+    step1 = steps_list[int(len(steps_list) / 2)]  # pick something in the middle
+    step2 = steps_list[-2]                        # pick the second highest possible setting
+    if step1 == step2:
+        LH.warning("Fan does not have enough steps to calibrate!")
+        return None
+    emc2101.set_driver_strength(step1)
+    time.sleep(5)
+    dutycycle1 = int(step1 * 100 / len(steps_list))
+    rpm1 = emc2101.get_rpm()
+    LH.debug("dutycycle: %i%% -> RPM: %i", dutycycle1, rpm1)
+    emc2101.set_driver_strength(step2)
+    time.sleep(5)
+    dutycycle2 = int(step2 * 100 / len(steps_list))
+    rpm2 = emc2101.get_rpm()
+    LH.debug("dutycycle: %i%% -> RPM: %i", dutycycle2, rpm2)
+    if rpm1 is None or rpm2 is None:
+        LH.error("Unable to get a reliable RPM reading. Aborting.")
+        return None
+    if rpm1 * 100 / rpm2 < 96:
+        LH.info("Yes, it does. Observed an RPM change in response to PWM signal. (%i%%: %i -> %i%%: %i RPM)", dutycycle1, rpm1, dutycycle2, rpm2)
+    else:
+        LH.warning("Failed to observe a significant speed change in response to PWM signal! Aborting.")
+        LH.warning("Please verify wiring and configuration.")
+        return None
+    # -----------------------------------------------------------------
+    LH.info("Mapping PWM dutycycle to RPM. Please wait.")
+    mappings = list()
+    for step in steps_list:
+        dutycycle = int(step * 100 / len(steps_list))
+        # set fan speed and wait for the speed to settle
+        emc2101.set_driver_strength(step)
+        time.sleep(1)
+        readings = [99999, 99999, 99999]
+        for i in range(24):
+            cursor = i % len(readings)
+            rpm_cur = emc2101.get_rpm()
+            if rpm_cur is not None:
+                # order is important! (update readings before calculating the average)
+                readings[cursor] = rpm_cur
+                rpm_avg = sum(readings) / len(readings)
+                # calculate deviation from average
+                deviation = rpm_cur / rpm_avg
+                LH.debug("step: %2i i: %2i -> rpm: %4i deviation: %3.2f", step, cursor, rpm_cur, deviation)
+                if 0.99 <= deviation <= 1.01:
+                    # RPM will never be exact and fluctuates slightly
+                    # -> round to nearest factor of 5
+                    rpm = round(rpm_avg / 5) * 5
+                    LH.debug("Fan has settled: (step: %i -> dutycycle: %3i%%, rpm: %i)", step, dutycycle, rpm)
+                    mappings.append((step, dutycycle, rpm))
+                    break
+                else:
+                    time.sleep(0.5)
+            else:
+                LH.error("Unable to get a reliable RPM reading. Aborting.")
+                return None
+        else:
+            LH.warning("Fan never settled! (step: %i -> dutycycle: %3i%%, rpm: <n/a>)", step, dutycycle)
+            mappings.append((step, dutycycle, rpm))
+
+    # determine maximum RPM
+    rpm_max = max([rpm for (_, _, rpm) in mappings])
+    LH.info("Maximum RPM: %i", rpm_max)
+
+    # prune steps
+    #  - multiple steps may result in the same RPM (e.g. minimum RPM)
+    #  - ensure each step is significantly different from the previous
+    #  - ensure each step increases RPM
+    prune = list()
+    rpm_delta_min = rpm_max * 0.011
+    for i in range(len(mappings) - 1):
+        step, _, rpm_this = mappings[i]
+        _, _, rpm_next = mappings[i + 1]
+        if rpm_this + rpm_delta_min <= rpm_next:
+            # significantly different from next element -> keep it
+            pass
+        else:
+            # within range of next element -> prune it
+            prune.append(step)
+
+    steps: Steps = dict()
+    for step, dutycycle, rpm in mappings:
+        rpm_percent = rpm * 100 / rpm_max
+        LH.info("step: %2i dutycycle: %3i%% -> RPM: %5i (%3.0f%%)", step, dutycycle, rpm, rpm_percent)
+        if step not in prune:
+            steps[step] = (dutycycle, rpm)
+
+    fan_profile = FanConfig(
+        model=model,
+        rpm_control_mode=RpmControlMode.PWM,
+        pwm_frequency=pwm_frequency,
+        minimum_duty_cycle=min([dutycycle for (_, (dutycycle, _)) in steps.items()]),  # e.g. 20%
+        maximum_duty_cycle=max([dutycycle for (_, (dutycycle, _)) in steps.items()]),  # typically 100%
+        minimum_rpm=min([rpm for (_, (_, rpm)) in steps.items() if rpm is not None]),
+        maximum_rpm=max([rpm for (_, (_, rpm)) in steps.items() if rpm is not None]),
+        steps=steps,
+    )
+    return fan_profile
 
 
 def calculate_pwm_factors(pwm_frequency: int) -> tuple[int, int]:
