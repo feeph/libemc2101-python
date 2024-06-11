@@ -9,8 +9,7 @@ import unittest
 import board  # type: ignore
 import busio  # type: ignore
 
-import i2c.emc2101
-from i2c.emc2101 import DeviceConfig, FanConfig, FanSpeedUnit, PinSixMode, RpmControlMode, SpinUpDuration, SpinUpStrength, TemperatureLimitType  # NOQA
+from i2c.emc2101.emc2101_pwm import DeviceConfig, Emc2101_PWM, FanConfig, FanSpeedUnit, PinSixMode, RpmControlMode, SpinUpDuration, SpinUpStrength, TemperatureLimitType  # NOQA
 
 
 @unittest.skipUnless(os.environ.get('TEST_EMC2101_CHIP', 'n') == 'y', "Skipping physical device test.")
@@ -39,7 +38,7 @@ class TestUsingMockedDevice(unittest.TestCase):
             # fmt: on
         }
         self.fan_config = FanConfig(model="generic PWM fan", pwm_frequency=22500, rpm_control_mode=RpmControlMode.PWM, minimum_duty_cycle=20, maximum_duty_cycle=100, minimum_rpm=100, maximum_rpm=2000, steps=steps)
-        self.emc2101 = i2c.emc2101.Emc2101(i2c_bus=i2c_bus, device_config=device_config, fan_config=self.fan_config)
+        self.emc2101 = Emc2101_PWM(i2c_bus=i2c_bus, device_config=device_config, fan_config=self.fan_config)
 
     def tearDown(self):
         # nothing to do
@@ -50,10 +49,10 @@ class TestUsingMockedDevice(unittest.TestCase):
     # ---------------------------------------------------------------------
 
     def read_device_register(self, register: int):
-        return self.emc2101._i2c_device.read_register(register)
+        return self.emc2101._emc2101._i2c_device.read_register(register)
 
     def write_device_register(self, register: int, value: int):
-        self.emc2101._i2c_device.write_register(register, value)
+        self.emc2101._emc2101._i2c_device.write_register(register, value)
 
     # ---------------------------------------------------------------------
     # hardware details
@@ -167,14 +166,15 @@ class TestUsingMockedDevice(unittest.TestCase):
         expected = 868                                                       # same unit as input
         # -----------------------------------------------------------------
         self.assertEqual(computed, expected)
-        self.assertTrue(self.emc2101._i2c_device.read_register(0x4A) & 0b0010_0000)  # manual control is enabled
-        self.assertEqual(self.emc2101._i2c_device.read_register(0x4C), 0x0A)         # number of steps depends on pwm frequency
+        self.assertTrue(self.read_device_register(0x4A) & 0b0010_0000)  # manual control is enabled
+        self.assertEqual(self.read_device_register(0x4C), 0x0A)         # number of steps depends on pwm frequency
 
     def test_duty_cycle_write_rpm_oor(self):
         self.assertRaises(ValueError, self.emc2101.set_fixed_speed, 2500)
 
     # control duty cycle using temperature sensor and lookup table
 
+    @unittest.skipUnless(os.environ.get('TEST_EMC2101_SENSOR', 'n') == 'y', "Skipping external sensor test.")
     def test_update_lookup_table_empty(self):
         values = {
         }
@@ -198,6 +198,7 @@ class TestUsingMockedDevice(unittest.TestCase):
         self.assertEqual(self.read_device_register(0x5E), 0)
         self.assertEqual(self.read_device_register(0x5F), 0x00)
 
+    @unittest.skipUnless(os.environ.get('TEST_EMC2101_SENSOR', 'n') == 'y', "Skipping external sensor test.")
     def test_update_lookup_table_partial(self):
         # there's nothing specific decimal or hex about these values,
         # using different number systems simply to make it easier to
@@ -217,6 +218,7 @@ class TestUsingMockedDevice(unittest.TestCase):
         for offset in range(4, 16):
             self.assertEqual(self.read_device_register(0x50 + offset), 0x00)
 
+    @unittest.skipUnless(os.environ.get('TEST_EMC2101_SENSOR', 'n') == 'y', "Skipping external sensor test.")
     def test_update_lookup_table_full(self):
         # there's nothing specific decimal or hex about these values,
         # using different number systems simply to make it easier to
@@ -251,6 +253,7 @@ class TestUsingMockedDevice(unittest.TestCase):
         self.assertEqual(self.read_device_register(0x5E), 72)
         self.assertEqual(self.read_device_register(0x5F), 0x0A)
 
+    @unittest.skipUnless(os.environ.get('TEST_EMC2101_SENSOR', 'n') == 'y', "Skipping external sensor test.")
     def test_update_lookup_table_toomany(self):
         # there's nothing specific decimal or hex about these values,
         # using different number systems simply to make it easier to
@@ -270,7 +273,32 @@ class TestUsingMockedDevice(unittest.TestCase):
         # -----------------------------------------------------------------
         self.assertRaises(ValueError, self.emc2101.update_lookup_table, values=values, unit=FanSpeedUnit.STEP)
 
+    @unittest.skipUnless(os.environ.get('TEST_EMC2101_SENSOR', 'n') == 'y', "Skipping external sensor test.")
+    def test_update_lookup_table_inuse(self):
+        # there's nothing specific decimal or hex about these values,
+        # using different number systems simply to make it easier to
+        # see what's coming from where
+        values = {
+            16: 0x03,  # temp+speed #1
+            24: 0x04,  # temp+speed #2
+            # the remaining 6 slots remain unused
+        }
+        # -----------------------------------------------------------------
+        self.write_device_register(0x4A, 0b0000_0000)  # table is currently in use
+        self.emc2101.update_lookup_table(values=values, unit=FanSpeedUnit.STEP)
+        # -----------------------------------------------------------------
+        self.assertEqual(self.read_device_register(0x50), 16)
+        self.assertEqual(self.read_device_register(0x51), 0x03)
+        self.assertEqual(self.read_device_register(0x52), 24)
+        self.assertEqual(self.read_device_register(0x53), 0x04)
+        for offset in range(4, 16):
+            self.assertEqual(self.read_device_register(0x50 + offset), 0x00)
+
+    @unittest.skipUnless(os.environ.get('TEST_EMC2101_SENSOR', 'n') == 'y', "Skipping external sensor test.")
     def test_reset_lookup(self):
+        # initialize status register
+        # self.write_device_register(0x02, 0x00)
+        # self.write_device_register(0x4A, 0x20)
         # populate with some non-zero values
         values = {
             20: 0x03,  # temp+speed #1
