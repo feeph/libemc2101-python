@@ -1,0 +1,42 @@
+---
+# this repository uses the pre-commit framework
+# documentation can be found at https://pre-commit.com/
+#
+# perform once after cloning the repository:
+#  pipx install pre-commit
+#  pre-commit install --hook-type pre-commit
+#  pre-commit install --hook-type commit-msg
+#
+# if you want to trigger pre-commit manually:
+#  pre-commit run
+#
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v2.3.0
+    hooks:
+      - id: check-yaml
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+  # https://pycqa.github.io/isort/docs/configuration/pre-commit.html
+  - repo: https://github.com/pycqa/isort
+    rev: 5.13.2
+    hooks:
+      - id: isort
+  # https://pypi.org/project/autopep8/
+  - repo: https://github.com/hhatto/autopep8
+    rev: v2.2.0
+    hooks:
+      - id: autopep8
+  # https://www.conventionalcommits.org/
+  - repo: https://github.com/compilerla/conventional-pre-commit
+    rev: v3.2.0
+    hooks:
+      - id: conventional-pre-commit
+        stages:
+         - commit-msg
+        args: []
+  # https://github.com/PyCQA/flake8
+  - repo: https://github.com/PyCQA/flake8
+    rev: 7.0.0
+    hooks:
+      - id: flake8
