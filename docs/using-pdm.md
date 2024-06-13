@@ -6,6 +6,7 @@ install PDM
 
 ```SHELL
 pipx install pdm
+pdm config strategy.save compatible
 pdm plugin add pdm-autoexport
 ```
 
@@ -47,7 +48,7 @@ tox
 add a dependency
 
 ```SHELL
-pdm add --save-compatible "adafruit-board-toolkit >= 1.1.0"
+pdm add "adafruit-board-toolkit >= 1.1.0"
 ```
 
 add development-only dependencies
