@@ -101,13 +101,13 @@ ipython_config.py
 #   https://python-poetry.org/docs/basic-usage/#commit-your-poetrylock-file-to-version-control
 #poetry.lock
 
-# pdm
-#   Similar to Pipfile.lock, it is generally recommended to include pdm.lock in version control.
-#pdm.lock
-#   pdm stores project-wide configurations in .pdm.toml, but it is recommended to not include it
-#   in version control.
-#   https://pdm.fming.dev/#use-with-ide
-.pdm.toml
+# pdm (https://pdm-project.org/)
+#  - You MUST commit the pyproject.toml file.
+#  - You SHOULD commit the pdm.lock and pdm.toml file.
+#  - Do NOT commit the .pdm-python file.
+#  - pdm.toml contains some project-wide configuration and it may be useful to commit
+# -- https://pdm-project.org/latest/usage/project/#working-with-version-control
+.pdm-python
 
 # PEP 582; used by e.g. github.com/David-OConnor/pyflow and github.com/pdm-project/pdm
 __pypackages__/
