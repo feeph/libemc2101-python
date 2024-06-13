@@ -6,6 +6,7 @@ install PDM
 
 ```SHELL
 pipx install pdm
+pdm config strategy.save compatible
 pdm plugin add pdm-autoexport
 ```
 
@@ -47,7 +48,7 @@ tox
 add a dependency
 
 ```SHELL
-pdm add --save-compatible "adafruit-board-toolkit >= 1.1.0"
+pdm add "adafruit-board-toolkit >= 1.1.0"
 ```
 
 add development-only dependencies
@@ -58,15 +59,11 @@ pdm add --dev --group=test autopep8 flake8 mypy pytest pytest-sugar
 
 update dependencies
 
+_(since we configured `tool.pdm.autoexport` in pyproject.toml the requirements.txt file will be updated as well and kept in sync with pdm.lock)_
+
 ```SHELL
 pdm update
-pdm update -d
-```
-
-export dependencies to requirements.txt (required for tox)
-
-```SHELL
-pdm export -o requirements.txt
+pdm update --dev
 ```
 
 ## build and publish
