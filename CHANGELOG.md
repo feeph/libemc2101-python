@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/feeph/libi2c-emc2101-python/compare/v0.1.0...v0.1.1) (2024-06-13)
+
+
+### Bug Fixes
+
+* update file permissions 'emc2101_core.py' ([6cf74a1](https://github.com/feeph/libi2c-emc2101-python/commit/6cf74a135e46d569fdda28194d02869ced8ac279))
+
 ## 0.1.0 (2024-06-11)
 
 

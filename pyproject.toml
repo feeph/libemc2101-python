@@ -11,7 +11,7 @@
 
 [project]
 name = "libi2c-emc2101-python"
-version = "0.1.0"
+version = "0.1.1"
 description = "library for EMC2101 fan control chip"
 authors = [
     {name = "Feeph Aifeimei", email = "55798703+feeph@users.noreply.github.com"},
