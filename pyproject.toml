@@ -62,12 +62,6 @@ max_line_length = 250
 ignore          = ["E221", "E241"]
 in-place = true
 
-[tool.coverage.html]
-directory = "tests/coverage_report/"
-
-[tool.pytest.ini_options]
-addopts = "--cov=i2c --cov-fail-under=80"
-
 [tool.pdm]
 distribution = true
 
