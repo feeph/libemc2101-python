@@ -75,7 +75,7 @@ test = [
     "autopep8     ~= 2.2",
     "flake8       ~= 7.0",
     "mypy         ~= 1.10",
-    "pytest       ~= 8.2",
+    "pytest-cov   ~= 5.0",
     "pytest-sugar ~= 1.0",
 ]
 tox = []
