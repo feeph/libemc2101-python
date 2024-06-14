@@ -62,6 +62,12 @@ max_line_length = 250
 ignore          = ["E221", "E241"]
 in-place = true
 
+[tool.coverage.html]
+directory = "tests/coverage_report/"
+
+[tool.pytest.ini_options]
+addopts = "--cov=i2c --cov-fail-under=80"
+
 [tool.pdm]
 distribution = true
 
@@ -75,7 +81,7 @@ test = [
     "autopep8     ~= 2.2",
     "flake8       ~= 7.0",
     "mypy         ~= 1.10",
-    "pytest       ~= 8.2",
+    "pytest-cov   ~= 5.0",
     "pytest-sugar ~= 1.0",
 ]
 tox = []
