@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.2](https://github.com/feeph/libi2c-emc2101-python/compare/v0.1.1...v0.1.2) (2024-06-21)
+
+
+### Bug Fixes
+
+* use correct value to determine if lookup table is enabled ([3901d29](https://github.com/feeph/libi2c-emc2101-python/commit/3901d299d69aa22962f057d5aa7b21b07b6590a0))
+
 ## [0.1.1](https://github.com/feeph/libi2c-emc2101-python/compare/v0.1.0...v0.1.1) (2024-06-13)
 
 
