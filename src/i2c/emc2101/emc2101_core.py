@@ -304,12 +304,9 @@ class Emc2101_core:
 
         An external temperature sensor must be connected to use this feature.
         """
-        if not self._has_sensor_fault():
-            value = self._i2c_device.read_register(0x4A)
-            self._i2c_device.write_register(0x4A, value | 0b0010_0000)
-            return True
-        else:
-            return False
+        value = self._i2c_device.read_register(0x4A)
+        self._i2c_device.write_register(0x4A, value & 0b1101_1111)
+        return True
 
     def disable_lookup_table(self):
         """
@@ -318,10 +315,10 @@ class Emc2101_core:
         Table registers will be used.
         """
         value = self._i2c_device.read_register(0x4A)
-        self._i2c_device.write_register(0x4A, value & 0b1101_1111)
+        self._i2c_device.write_register(0x4A, value | 0b0010_0000)
 
     def is_lookup_table_enabled(self) -> bool:
-        return bool(self._i2c_device.read_register(0x4A) & 0b1101_1111)
+        return not self._i2c_device.read_register(0x4A) & 0b0010_0000
 
     def update_lookup_table(self, values: dict[int, int]) -> bool:
         """

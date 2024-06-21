@@ -249,6 +249,9 @@ class Emc2101_PWM:
         else:
             return step
 
+    def is_lookup_table_enabled(self) -> bool:
+        return self._emc2101.is_lookup_table_enabled()
+
     def update_lookup_table(self, values: dict[int, int], unit: FanSpeedUnit = FanSpeedUnit.PERCENT) -> bool:
         """
         populate the lookup table with the provided values and

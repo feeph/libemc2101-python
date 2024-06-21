@@ -220,6 +220,22 @@ class TestUsingMockedDevice(unittest.TestCase):
 
     # control duty cycle using temperature sensor and lookup table
 
+    def test_update_lookup_table_is_disabled(self):
+        self.write_device_register(0x4A, 0b0010_0011)
+        # -----------------------------------------------------------------
+        computed = self.emc2101.is_lookup_table_enabled()
+        expected = False
+        # -----------------------------------------------------------------
+        self.assertEqual(computed, expected)
+
+    def test_update_lookup_table_is_enabled(self):
+        self.write_device_register(0x4A, 0b0000_0011)
+        # -----------------------------------------------------------------
+        computed = self.emc2101.is_lookup_table_enabled()
+        expected = True
+        # -----------------------------------------------------------------
+        self.assertEqual(computed, expected)
+
     def test_update_lookup_table_empty(self):
         values = {
         }
