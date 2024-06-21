@@ -3,6 +3,7 @@
 """
 
 import logging
+import time
 
 # module busio provides no type hints
 import busio  # type: ignore
@@ -25,14 +26,17 @@ class I2cDevice:
         buf_r[0] = register
         buf_w = bytearray(1)
         for cur_try in range(1, 1 + max_tries):
+            # read/writes can spuriously fail -> wait a bit and retry
             try:
                 self._i2c_bus.writeto_then_readfrom(address=self._i2c_adr, buffer_out=buf_r, buffer_in=buf_w)
                 return buf_w[0]
             except OSError as e:
                 # [Errno 121] Remote I/O error
-                LH.debug("[%s] Failed to read register 0x%02X (%i/%i): %s",  __name__, register, cur_try, max_tries, e)
+                LH.warning("[%s] Failed to read register 0x%02X (%i/%i): %s",  __name__, register, cur_try, max_tries, e)
+                time.sleep(0.1)
             except RuntimeError as e:
-                LH.debug("[%s] Unable to read register 0x%02X (%i/%i): %s", __name__, register, cur_try, max_tries, e)
+                LH.warning("[%s] Unable to read register 0x%02X (%i/%i): %s", __name__, register, cur_try, max_tries, e)
+                time.sleep(0.1)
         else:
             raise RuntimeError(f"Unable to read register 0x{register:02X} after {cur_try} attempts. Giving up.")
 
@@ -52,5 +56,6 @@ class I2cDevice:
             except OSError as e:
                 # [Errno 121] Remote I/O error
                 LH.warning("[%s] Failed to write register 0x%02X (%i/%i): %s",  __name__, register, cur_try, max_tries, e)
+                time.sleep(0.1)
         else:
             raise RuntimeError(f"Unable to write register 0x{register:02X} after {cur_try} attempts. Giving up.")

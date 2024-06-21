@@ -14,7 +14,7 @@ from typing import Any
 # module busio provides no type hints
 import busio  # type: ignore
 
-from i2c.emc2101.emc2101_core import CONVERSIONS_PER_SECOND, Emc2101_core, SpinUpDuration, SpinUpStrength
+from i2c.emc2101.emc2101_core import CONVERSIONS_PER_SECOND, Emc2101_core, ExternalSensorStatus, SpinUpDuration, SpinUpStrength
 from i2c.emc2101.fan_configs import FanConfig, RpmControlMode, Steps, generic_pwm_fan
 from i2c.i2c_device import I2cDevice
 
@@ -314,6 +314,9 @@ class Emc2101_PWM:
 
     def set_chip_temperature_limit(self, value: float):
         self._emc2101.set_chip_temperature_limit(value=value)
+
+    def get_external_sensor_state(self) -> ExternalSensorStatus:
+        return self._emc2101.get_external_sensor_state()
 
     def has_external_sensor(self) -> bool:
         return self._emc2101.has_external_sensor()
