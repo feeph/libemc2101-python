@@ -8,6 +8,7 @@ You probably don't want to use this one. Use Emc2101_DAC / Emc2101_PWM instead.
 """
 
 import logging
+import math
 from enum import Enum
 
 # module busio provides no type hints
@@ -77,6 +78,12 @@ CONVERSIONS_PER_SECOND = {
     "16":   0b1000,
     "32":   0b1001,  # and all unlisted values
 }
+
+
+class ExternalSensorStatus:
+    OK = "all good"
+    FAULT1 = "open circuit or short to VDD"
+    FAULT2 = "short circuit or short to GND"
 
 
 class SpinUpStrength(Enum):
@@ -155,6 +162,7 @@ class Emc2101_core:
         self._step_min = 0
         self._step_max = 63
         # minimum and maximum operation temperature
+        # TODO reduce self._temp_max to 85
         self._temp_min = 0
         self._temp_max = 100
 
@@ -304,12 +312,9 @@ class Emc2101_core:
 
         An external temperature sensor must be connected to use this feature.
         """
-        if not self._has_sensor_fault():
-            value = self._i2c_device.read_register(0x4A)
-            self._i2c_device.write_register(0x4A, value | 0b0010_0000)
-            return True
-        else:
-            return False
+        value = self._i2c_device.read_register(0x4A)
+        self._i2c_device.write_register(0x4A, value & 0b1101_1111)
+        return True
 
     def disable_lookup_table(self):
         """
@@ -318,10 +323,10 @@ class Emc2101_core:
         Table registers will be used.
         """
         value = self._i2c_device.read_register(0x4A)
-        self._i2c_device.write_register(0x4A, value & 0b1101_1111)
+        self._i2c_device.write_register(0x4A, value | 0b0010_0000)
 
     def is_lookup_table_enabled(self) -> bool:
-        return bool(self._i2c_device.read_register(0x4A) & 0b1101_1111)
+        return not self._i2c_device.read_register(0x4A) & 0b0010_0000
 
     def update_lookup_table(self, values: dict[int, int]) -> bool:
         """
@@ -330,41 +335,37 @@ class Emc2101_core:
 
         returns 'True' if the lookup table was updated and 'False' if it wasn't.
         """
-        if not self._has_sensor_fault():
-            if len(values) > 8:
-                raise ValueError("too many entries in lookup table (max: 8)")
-            for temp, step in values.items():
-                if not self._temp_min <= temp <= self._temp_max:
-                    raise ValueError("temperature is out of range")
-                if not self._step_min <= step <= self._step_max:
-                    raise ValueError("step is out of range")
-            # -------------------------------------------------------------
-            # must disable lookup table to make it writeable
-            if self.is_lookup_table_enabled():
-                LH.error("Lookup table is enabled. Disabling.")
-                self.disable_lookup_table()
-                reenable_lut = True
-            else:
-                LH.error("Lookup table is not enabled. Good.")
-                reenable_lut = False
-            # 0x50..0x5f (8 x 2 registers; temp->step)
-            offset = 0
-            # set provided value
-            for temp, step in values.items():
-                self._i2c_device.write_register(0x50 + offset, temp)
-                self._i2c_device.write_register(0x51 + offset, step)
-                offset += 2
-            # fill remaining slots
-            for offset in range(offset, 16, 2):
-                self._i2c_device.write_register(0x50 + offset, 0x00)
-                self._i2c_device.write_register(0x51 + offset, 0x00)
-            # reenable lookup table if it was previously enabled
-            if reenable_lut:
-                self.enable_lookup_table()
-            return True
+        if len(values) > 8:
+            raise ValueError("too many entries in lookup table (max: 8)")
+        for temp, step in values.items():
+            if not self._temp_min <= temp <= self._temp_max:
+                raise ValueError("temperature is out of range")
+            if not self._step_min <= step <= self._step_max:
+                raise ValueError("step is out of range")
+        # -------------------------------------------------------------
+        # must disable lookup table to make it writeable
+        if self.is_lookup_table_enabled():
+            LH.error("Lookup table is enabled. Disabling.")
+            self.disable_lookup_table()
+            reenable_lut = True
         else:
-            LH.warning("Using the lookup table requires an external temperature sensor!")
-            return False
+            LH.error("Lookup table is not enabled. Good.")
+            reenable_lut = False
+        # 0x50..0x5f (8 x 2 registers; temp->step)
+        offset = 0
+        # set provided value
+        for temp, step in values.items():
+            self._i2c_device.write_register(0x50 + offset, temp)
+            self._i2c_device.write_register(0x51 + offset, step)
+            offset += 2
+        # fill remaining slots
+        for offset in range(offset, 16, 2):
+            self._i2c_device.write_register(0x50 + offset, 0x00)
+            self._i2c_device.write_register(0x51 + offset, 0x00)
+        # reenable lookup table if it was previously enabled
+        if reenable_lut:
+            self.enable_lookup_table()
+        return True
 
     def reset_lookup_table(self):
         # must disable lookup table to make it writeable
@@ -412,8 +413,29 @@ class Emc2101_core:
     def set_chip_temperature_limit(self, value: float):
         self._i2c_device.write_register(0x05, int(value))
 
+    def get_external_sensor_state(self) -> ExternalSensorStatus:
+        # The status register 0x02 has a diode fault bit but that bit is
+        # set only if there is an open circuit between DP-DN.
+        # (It is NOT set if there is a short circuit between DP-DN.)
+        msb = self._i2c_device.read_register(0x01)  # high byte, must be read first!
+        lsb = self._i2c_device.read_register(0x10)  # low byte
+        if msb != 0b0111_1111:
+            return ExternalSensorStatus.OK
+        else:
+            if lsb == 0b0000_0000:
+                return ExternalSensorStatus.FAULT1
+            elif lsb == 0b1110_0000:
+                return ExternalSensorStatus.FAULT2
+            else:
+                raise RuntimeError(f"unexpected external sensor state (msb: 0x{msb:02X} lsb:0x{lsb:02X})")
+
     def has_external_sensor(self) -> bool:
-        return not self._has_sensor_fault()
+        # The EMC2101 has a fault bit in the status register (0x02) but
+        # that bit is set only if there is an open circuit between DP-DN
+        # or if it's shorted to VDD. The bit is not set if there is a
+        # short circuit between DP-DN or to ground.
+        # -> read the temperature MSB instead
+        return self._i2c_device.read_register(0x01) != 0b0111_1111
 
     def get_sensor_temperature(self) -> float:
         """
@@ -423,7 +445,10 @@ class Emc2101_core:
         """
         msb = self._i2c_device.read_register(0x01)  # high byte, must be read first!
         lsb = self._i2c_device.read_register(0x10)  # low byte
-        return convert_bytes2temperature(msb, lsb)
+        if msb != 0b0111_1111:
+            return convert_bytes2temperature(msb, lsb)
+        else:
+            return math.nan
 
     def get_sensor_low_temperature_limit(self) -> float:
         """
@@ -551,9 +576,6 @@ class Emc2101_core:
         else:
             LH.error("The diode fault bit is set: Sensor is faulty or missing.")
             return False
-
-    def _has_sensor_fault(self):
-        return self._i2c_device.read_register(0x02) & 0b0000_0100
 
     def _uses_alert_mode(self) -> bool:
         return not self._uses_tacho_mode()
