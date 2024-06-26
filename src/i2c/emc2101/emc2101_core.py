@@ -80,7 +80,7 @@ CONVERSIONS_PER_SECOND = {
 }
 
 
-class ExternalSensorStatus:
+class ExternalSensorStatus(Enum):
     OK = "all good"
     FAULT1 = "open circuit or short to VDD"
     FAULT2 = "short circuit or short to GND"
