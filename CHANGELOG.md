@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.3](https://github.com/feeph/libi2c-emc2101-python/compare/v0.1.2...v0.1.3) (2024-06-26)
+
+
+### Bug Fixes
+
+* add missing base class 'Enum' ([#14](https://github.com/feeph/libi2c-emc2101-python/issues/14)) ([a6d1397](https://github.com/feeph/libi2c-emc2101-python/commit/a6d13976ea607c524c953848bd34ce96157147c3))
+
 ## [0.1.2](https://github.com/feeph/libi2c-emc2101-python/compare/v0.1.1...v0.1.2) (2024-06-21)
 
 
