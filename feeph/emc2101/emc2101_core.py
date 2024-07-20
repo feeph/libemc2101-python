@@ -15,7 +15,7 @@ from enum import Enum
 import busio  # type: ignore
 from feeph.i2c import read_device_register, read_device_registers, write_device_register, write_device_registers
 
-from i2c.emc2101.conversions import convert_bytes2temperature, convert_temperature2bytes
+from feeph.emc2101.conversions import convert_bytes2temperature, convert_temperature2bytes
 
 LH = logging.getLogger(__name__)
 

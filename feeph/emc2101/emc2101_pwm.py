@@ -14,8 +14,8 @@ from typing import Any
 # module busio provides no type hints
 import busio  # type: ignore
 
-from i2c.emc2101.emc2101_core import CONVERSIONS_PER_SECOND, Emc2101_core, ExternalSensorStatus, SpinUpDuration, SpinUpStrength
-from i2c.emc2101.fan_configs import FanConfig, RpmControlMode, Steps, generic_pwm_fan
+from feeph.emc2101.emc2101_core import CONVERSIONS_PER_SECOND, Emc2101_core, ExternalSensorStatus, SpinUpDuration, SpinUpStrength
+from feeph.emc2101.fan_configs import FanConfig, RpmControlMode, Steps, generic_pwm_fan
 
 LH = logging.getLogger(__name__)
 
@@ -101,7 +101,7 @@ class Emc2101_PWM:
         elif fan_config.rpm_control_mode == RpmControlMode.PWM:
             # emc2101: PWM, fan: PWM -> works
             LH.info("EMC2101 and connected fan both use PWM to control fan speed. Good.")
-            from i2c.emc2101.scs import PWM
+            from feeph.emc2101.scs import PWM
             scs = PWM(fan_config=fan_config)
             pwm_d, pwm_f = calculate_pwm_factors(pwm_frequency=fan_config.pwm_frequency)
             emc2101.configure_pwm_control(pwm_d=pwm_d, pwm_f=pwm_f, step_max=max(scs.get_steps()))

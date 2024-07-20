@@ -5,8 +5,8 @@
 
 import unittest
 
-from i2c.emc2101.fan_configs import FanConfig, RpmControlMode
-from i2c.emc2101.scs.pwm import PWM, calculate_pwm_factors
+from feeph.emc2101.fan_configs import FanConfig, RpmControlMode
+from feeph.emc2101.scs.pwm import PWM, calculate_pwm_factors
 
 
 class TestScsPwm(unittest.TestCase):

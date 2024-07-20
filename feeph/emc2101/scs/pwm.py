@@ -5,10 +5,10 @@
 import logging
 import math
 
-from i2c.emc2101.fan_configs import FanConfig
-from i2c.emc2101.scs.base_class import SpeedControlSetter
+from feeph.emc2101.fan_configs import FanConfig
+from feeph.emc2101.scs.base_class import SpeedControlSetter
 
-LH = logging.getLogger("i2c.emc2101")
+LH = logging.getLogger("feeph.emc2101")
 
 
 class PWM(SpeedControlSetter):

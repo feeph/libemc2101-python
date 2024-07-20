@@ -17,7 +17,7 @@ tool-based development support as possible.
 # import busio
 # import yaml
 #
-# from i2c.emc2101 import calibrate_pwm_fan, export_fan_config
+# from feeph.emc2101 import calibrate_pwm_fan, export_fan_config
 #
 # i2c_bus = busio.I2C(scl=board.SCL, sda=board.SDA)
 # fan_profile = calibrate_pwm_fan(i2c_bus=i2c_bus, model="My PWM Fan")
@@ -33,7 +33,7 @@ tool-based development support as possible.
 # import busio
 # import yaml
 #
-# from i2c.emc2101 import DeviceConfig, Emc2101_PWM, PinSixMode, RpmControlMode
+# from feeph.emc2101 import DeviceConfig, Emc2101_PWM, PinSixMode, RpmControlMode
 #
 # with open('my_pwm_fan.yaml', 'r') as fh:
 #   fan_profile = import_fan_config(yaml.load(fh))
@@ -46,6 +46,6 @@ tool-based development support as possible.
 
 # the following imports are provided for user convenience
 # flake8: noqa: F401
-from i2c.emc2101.emc2101_core import CONVERSIONS_PER_SECOND, DEFAULTS, SpinUpDuration, SpinUpStrength
-from i2c.emc2101.emc2101_pwm import DeviceConfig, Emc2101_PWM, ExternalTemperatureSensorConfig, FanSpeedUnit, PinSixMode, TemperatureLimitType, calibrate_pwm_fan, emc2101_default_config, ets_2n3904, ets_2n3906
-from i2c.emc2101.fan_configs import FanConfig, RpmControlMode, Steps, export_fan_config, generic_pwm_fan
+from feeph.emc2101.emc2101_core import CONVERSIONS_PER_SECOND, DEFAULTS, SpinUpDuration, SpinUpStrength
+from feeph.emc2101.emc2101_pwm import DeviceConfig, Emc2101_PWM, ExternalTemperatureSensorConfig, FanSpeedUnit, PinSixMode, TemperatureLimitType, calibrate_pwm_fan, emc2101_default_config, ets_2n3904, ets_2n3906
+from feeph.emc2101.fan_configs import FanConfig, RpmControlMode, Steps, export_fan_config, generic_pwm_fan

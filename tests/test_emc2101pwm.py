@@ -17,8 +17,8 @@ import board  # type: ignore
 import busio  # type: ignore
 from feeph.i2c import EmulatedI2C, read_device_register, write_device_register, write_device_registers
 
-import i2c.emc2101.emc2101_core
-import i2c.emc2101.emc2101_pwm as sut  # sytem under test
+import feeph.emc2101.emc2101_core
+import feeph.emc2101.emc2101_pwm as sut  # sytem under test
 
 if os.environ.get('TEST_EMC2101_CHIP', 'n') == 'y':
     HAS_HARDWARE = True
@@ -34,7 +34,7 @@ class TestEmc2101PWM(unittest.TestCase):
             self.i2c_bus = busio.I2C(scl=board.SCL, sda=board.SDA)
         else:
             # initialize read/write registers
-            registers = i2c.emc2101.emc2101_core.DEFAULTS.copy()
+            registers = feeph.emc2101.emc2101_core.DEFAULTS.copy()
             # add readonly registers
             registers[0x00] = 0x14  # chip temperature
             registers[0x01] = 0x1B  # external sensor temperature (high byte)

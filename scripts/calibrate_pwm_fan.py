@@ -15,7 +15,7 @@ import board  # type: ignore
 import busio  # type: ignore
 import yaml
 
-from i2c.emc2101 import calibrate_pwm_fan, export_fan_config
+from feeph.emc2101 import calibrate_pwm_fan, export_fan_config
 
 LH = logging.getLogger("main")
 

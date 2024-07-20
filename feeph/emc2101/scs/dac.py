@@ -2,7 +2,7 @@
 """
 """
 
-from i2c.emc2101.scs.base_class import SpeedControlSetter
+from feeph.emc2101.scs.base_class import SpeedControlSetter
 
 
 class DAC(SpeedControlSetter):
