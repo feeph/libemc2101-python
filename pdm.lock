@@ -5,7 +5,7 @@
 groups = ["default", "dev", "test"]
 strategy = ["inherit_metadata"]
 lock_version = "4.5.0"
-content_hash = "sha256:0503c7ad7e77e874e1196988d4aeede79d0e088e3cc67ba6d69c01003e67c57d"
+content_hash = "sha256:93929186a97339d3c8fa11692f5f9ea86c0197319e8328fd3487893e2de3a789"
 
 [[metadata.targets]]
 requires_python = ">=3.10,<3.13"
@@ -624,6 +624,17 @@ marker = "python_version < \"3.11\""
 files = [
     {file = "tomli-2.0.1-py3-none-any.whl", hash = "sha256:939de3e7a6161af0c887ef91b7d41a53e7c5a1ca976325f429cb46ea9bc30ecc"},
     {file = "tomli-2.0.1.tar.gz", hash = "sha256:de526c12914f0c550d15924c62d72abc48d6fe7364aa87328337a31007fe8a4f"},
+]
+
+[[package]]
+name = "types-pyyaml"
+version = "6.0.12.20240311"
+requires_python = ">=3.8"
+summary = "Typing stubs for PyYAML"
+groups = ["test"]
+files = [
+    {file = "types-PyYAML-6.0.12.20240311.tar.gz", hash = "sha256:a9e0f0f88dc835739b0c1ca51ee90d04ca2a897a71af79de9aec5f38cb0a5342"},
+    {file = "types_PyYAML-6.0.12.20240311-py3-none-any.whl", hash = "sha256:b845b06a1c7e54b8e5b4c683043de0d9caf205e7434b3edc678ff2411979b8f6"},
 ]
 
 [[package]]
