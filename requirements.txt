@@ -103,9 +103,9 @@ coverage[toml]==7.6.0 \
 exceptiongroup==1.2.2; python_version < "3.11" \
     --hash=sha256:3111b9d131c238bec2f8f516e123e14ba243563fb135d3fe885990585aa7795b \
     --hash=sha256:47c2edf7c6738fafb49fd34290706d1a1a2f4d1c6df275526b62cbb4aa5393cc
-feeph-i2c==0.4.1 \
-    --hash=sha256:09bfcb7883fa9491dead4ba3918813652b5a76694c40f302d4a2147aa0acface \
-    --hash=sha256:609d13edc2e86c2f3582350341836a489dfd0acb839cf0f59f7f3c1cb3c33586
+feeph-i2c==0.5.0 \
+    --hash=sha256:90427ab4ffb0daa1197af8a177edfccc7494c7d5d93d096e6df7982aae308e0c \
+    --hash=sha256:ac95a9e2177dbf72c8e31c907d72cb19dff51c9e61b4bf75a08c7e10191dae89
 flake8==7.1.0 \
     --hash=sha256:2e416edcc62471a64cea09353f4e7bdba32aeb079b6e360554c659a122b1bc6a \
     --hash=sha256:48a07b626b55236e0fb4784ee69a465fbf59d79eec1f5b4785c3d3bc57d17aa5
