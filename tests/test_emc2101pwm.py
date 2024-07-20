@@ -15,6 +15,7 @@ import unittest
 # modules board and busio provide no type hints
 import board  # type: ignore
 import busio  # type: ignore
+from feeph.i2c import EmulatedI2C, read_device_register, write_device_register
 
 import i2c.emc2101.emc2101_core
 import i2c.emc2101.emc2101_pwm as sut  # sytem under test
@@ -25,42 +26,10 @@ else:
     HAS_HARDWARE = False
 
 
-class SimulatedI2cBus:
-    """
-    simulate an I²C bus
-
-    This simulation is useful to ensure the right values are read and written.
-    It is unable to simulate device-specific behavior! (e.g. duplicated registers)
-    """
-
-    def __init__(self, state: dict[int, dict[int, int]]):
-        """
-        initialize a simulated I2C bus
-
-        ```
-        state = {
-            <device>: {
-                <register>: <value>,
-            }
-        }
-        ```
-        """
-        self._state = state.copy()
-
-    def writeto(self, address, buffer, *, start=0, end=None):
-        i2c_device_address  = address
-        i2c_device_register = buffer[0]
-        self._state[i2c_device_address][i2c_device_register] = buffer[1]
-
-    def writeto_then_readfrom(self, address: int, buffer_out: bytearray, buffer_in: bytearray, *, out_start=0, out_end=None, in_start=0, in_end=None, stop=False):
-        i2c_device_address  = address
-        i2c_device_register = buffer_out[0]
-        buffer_in[0] = self._state[i2c_device_address][i2c_device_register]
-
-
 class TestEmc2101PWM(unittest.TestCase):
 
     def setUp(self):
+        self.i2c_adr = 0x4C
         if HAS_HARDWARE:
             self.i2c_bus = busio.I2C(scl=board.SCL, sda=board.SDA)
         else:
@@ -77,7 +46,7 @@ class TestEmc2101PWM(unittest.TestCase):
             registers[0xFD] = 0x16  # product id
             registers[0xFE] = 0x5D  # manufacturer id
             registers[0xFF] = 0x02  # revision
-            self.i2c_bus = SimulatedI2cBus(state={0x4C: registers})
+            self.i2c_bus = EmulatedI2C(state={self.i2c_adr: registers})
         device_config = sut.DeviceConfig(rpm_control_mode=sut.RpmControlMode.PWM, pin_six_mode=sut.PinSixMode.TACHO)
         steps = {
             # fmt: off
@@ -105,16 +74,6 @@ class TestEmc2101PWM(unittest.TestCase):
     def tearDown(self):
         # nothing to do
         pass
-
-    # ---------------------------------------------------------------------
-    # helpers
-    # ---------------------------------------------------------------------
-
-    def read_device_register(self, register: int):
-        return self.emc2101._emc2101._i2c_device.read_register(register)
-
-    def write_device_register(self, register: int, value: int):
-        self.emc2101._emc2101._i2c_device.write_register(register, value)
 
     # ---------------------------------------------------------------------
     # hardware details
@@ -167,13 +126,13 @@ class TestEmc2101PWM(unittest.TestCase):
         # -----------------------------------------------------------------
         self.emc2101.configure_spinup_behaviour(spinup_strength=spinup_strength, spinup_duration=spinup_duration, fast_mode=fast_mode)
         # -----------------------------------------------------------------
-        self.assertEqual(self.read_device_register(0x4B), 0b0010_1101)
+        self.assertEqual(read_device_register(self.i2c_bus, self.i2c_adr, 0x4B), 0b0010_1101)
 
     # control duty cycle using manual control
 
     def test_duty_cycle_read_steps(self):
-        self.write_device_register(0x4A, 0b0010_0000)  # enable manual control
-        self.write_device_register(0x4C, 0x08)         # number of steps depends on pwm frequency
+        write_device_register(self.i2c_bus, self.i2c_adr, 0x4A, 0b0010_0000)  # enable manual control
+        write_device_register(self.i2c_bus, self.i2c_adr, 0x4C, 0x08)         # number of steps depends on pwm frequency
         # -----------------------------------------------------------------
         computed = self.emc2101.get_fixed_speed(unit=sut.FanSpeedUnit.STEP)
         expected = 8
@@ -186,15 +145,15 @@ class TestEmc2101PWM(unittest.TestCase):
         expected = 8                                                            # same unit as input
         # -----------------------------------------------------------------
         self.assertEqual(computed, expected)
-        self.assertTrue(self.read_device_register(0x4A) & 0b0010_0000)  # manual control is enabled
-        self.assertEqual(self.read_device_register(0x4C), 0x08)         # number of steps depends on pwm frequency
+        self.assertTrue(read_device_register(self.i2c_bus, self.i2c_adr, 0x4A) & 0b0010_0000)  # manual control is enabled
+        self.assertEqual(read_device_register(self.i2c_bus, self.i2c_adr, 0x4C), 0x08)         # number of steps depends on pwm frequency
 
     def test_duty_cycle_write_steps_oor(self):
         self.assertRaises(ValueError, self.emc2101.set_fixed_speed, 20, unit=sut.FanSpeedUnit.STEP)
 
     def test_duty_cycle_read_percent(self):
-        self.write_device_register(0x4A, 0b0010_0000)  # enable manual control
-        self.write_device_register(0x4C, 0x08)         # number of steps depends on pwm frequency
+        write_device_register(self.i2c_bus, self.i2c_adr, 0x4A, 0b0010_0000)  # enable manual control
+        write_device_register(self.i2c_bus, self.i2c_adr, 0x4C, 0x08)         # number of steps depends on pwm frequency
         # -----------------------------------------------------------------
         computed = self.emc2101.get_fixed_speed(unit=sut.FanSpeedUnit.PERCENT)
         expected = 58
@@ -207,15 +166,15 @@ class TestEmc2101PWM(unittest.TestCase):
         expected = 72                                # same unit as input
         # -----------------------------------------------------------------
         self.assertEqual(computed, expected)
-        self.assertTrue(self.read_device_register(0x4A) & 0b0010_0000)  # manual control is enabled
-        self.assertEqual(self.read_device_register(0x4C), 0x0A)         # number of steps depends on pwm frequency
+        self.assertTrue(read_device_register(self.i2c_bus, self.i2c_adr, 0x4A) & 0b0010_0000)  # manual control is enabled
+        self.assertEqual(read_device_register(self.i2c_bus, self.i2c_adr, 0x4C), 0x0A)         # number of steps depends on pwm frequency
 
     def test_duty_cycle_write_percent_oor(self):
         self.assertRaises(ValueError, self.emc2101.set_fixed_speed, 105)
 
     def test_duty_cycle_read_rpm(self):
-        self.write_device_register(0x4A, 0b0010_0000)  # enable manual control
-        self.write_device_register(0x4C, 0x08)         # number of steps depends on pwm frequency
+        write_device_register(self.i2c_bus, self.i2c_adr, 0x4A, 0b0010_0000)  # enable manual control
+        write_device_register(self.i2c_bus, self.i2c_adr, 0x4C, 0x08)         # number of steps depends on pwm frequency
         # -----------------------------------------------------------------
         computed = self.emc2101.get_fixed_speed(unit=sut.FanSpeedUnit.RPM)
         expected = self.fan_config.maximum_rpm
@@ -228,8 +187,8 @@ class TestEmc2101PWM(unittest.TestCase):
         expected = 868                                                           # same unit as input
         # -----------------------------------------------------------------
         self.assertEqual(computed, expected)
-        self.assertTrue(self.read_device_register(0x4A) & 0b0010_0000)  # manual control is enabled
-        self.assertEqual(self.read_device_register(0x4C), 0x0A)         # number of steps depends on pwm frequency
+        self.assertTrue(read_device_register(self.i2c_bus, self.i2c_adr, 0x4A) & 0b0010_0000)  # manual control is enabled
+        self.assertEqual(read_device_register(self.i2c_bus, self.i2c_adr, 0x4C), 0x0A)         # number of steps depends on pwm frequency
 
     def test_duty_cycle_write_rpm_oor(self):
         self.assertRaises(ValueError, self.emc2101.set_fixed_speed, 2500)
@@ -239,7 +198,7 @@ class TestEmc2101PWM(unittest.TestCase):
     # ---------------------------------------------------------------------
 
     def test_get_temperature_conversion_rate(self):
-        self.write_device_register(0x04, 0b0000_0111)
+        write_device_register(self.i2c_bus, self.i2c_adr, 0x04, 0b0000_0111)
         # -----------------------------------------------------------------
         computed = self.emc2101.get_temperature_conversion_rate()
         expected = "8"
@@ -250,7 +209,7 @@ class TestEmc2101PWM(unittest.TestCase):
         # -----------------------------------------------------------------
         self.assertTrue(self.emc2101.set_temperature_conversion_rate("1/8"))
         # -----------------------------------------------------------------
-        self.assertEqual(self.read_device_register(0x04), 0b0000_0001)
+        self.assertEqual(read_device_register(self.i2c_bus, self.i2c_adr, 0x04), 0b0000_0001)
 
     def test_get_temperature_conversion_rates(self):
         # -----------------------------------------------------------------
@@ -266,7 +225,7 @@ class TestEmc2101PWM(unittest.TestCase):
     def test_chip_temperature(self):
         # -----------------------------------------------------------------
         computed = self.emc2101.get_chip_temperature()
-        expected = self.read_device_register(0x00)
+        expected = read_device_register(self.i2c_bus, self.i2c_adr, 0x00)
         # -----------------------------------------------------------------
         self.assertEqual(computed, expected, f"Got unexpected chip temperature '{computed}'.")
 
@@ -275,7 +234,7 @@ class TestEmc2101PWM(unittest.TestCase):
     # ---------------------------------------------------------------------
 
     def test_chip_temperature_limit_read(self):
-        self.write_device_register(0x05, 0x46)
+        write_device_register(self.i2c_bus, self.i2c_adr, 0x05, 0x46)
         # -----------------------------------------------------------------
         computed = self.emc2101.get_chip_temperature_limit()
         expected = 70
@@ -283,8 +242,8 @@ class TestEmc2101PWM(unittest.TestCase):
         self.assertEqual(computed, expected, f"Got unexpected chip temperature limit '{computed}'.")
 
     def test_sensor_temperature_limit_read_lower(self):
-        self.write_device_register(0x08, 0x12)         # external sensor low limit (decimal)
-        self.write_device_register(0x14, 0b1110_0000)  # external sensor low limit (fraction)
+        write_device_register(self.i2c_bus, self.i2c_adr, 0x08, 0x12)         # external sensor low limit (decimal)
+        write_device_register(self.i2c_bus, self.i2c_adr, 0x14, 0b1110_0000)  # external sensor low limit (fraction)
         # -----------------------------------------------------------------
         computed = self.emc2101.get_sensor_temperature_limit(limit_type=sut.TemperatureLimitType.TO_COLD)
         expected = 18.9
@@ -297,12 +256,12 @@ class TestEmc2101PWM(unittest.TestCase):
         expected = 5.9
         # -----------------------------------------------------------------
         self.assertEqual(computed, expected, f"Got unexpected sensor temperature limit '{computed}'.")
-        self.assertEqual(self.read_device_register(0x08), 0x05)
-        self.assertEqual(self.read_device_register(0x14), 0b1110_0000)
+        self.assertEqual(read_device_register(self.i2c_bus, self.i2c_adr, 0x08), 0x05)
+        self.assertEqual(read_device_register(self.i2c_bus, self.i2c_adr, 0x14), 0b1110_0000)
 
     def test_sensor_temperature_limit_read_upper(self):
-        self.write_device_register(0x07, 0x54)         # external sensor low limit (decimal)
-        self.write_device_register(0x13, 0b1110_0000)  # external sensor low limit (fraction)
+        write_device_register(self.i2c_bus, self.i2c_adr, 0x07, 0x54)         # external sensor low limit (decimal)
+        write_device_register(self.i2c_bus, self.i2c_adr, 0x13, 0b1110_0000)  # external sensor low limit (fraction)
         # -----------------------------------------------------------------
         computed = self.emc2101.get_sensor_temperature_limit(limit_type=sut.TemperatureLimitType.TO_HOT)
         expected = 84.9
@@ -315,8 +274,8 @@ class TestEmc2101PWM(unittest.TestCase):
         expected = 84.9
         # -----------------------------------------------------------------
         self.assertEqual(computed, expected, f"Got unexpected sensor temperature limit '{computed}'.")
-        self.assertEqual(self.read_device_register(0x07), 0x54)
-        self.assertEqual(self.read_device_register(0x13), 0b1110_0000)
+        self.assertEqual(read_device_register(self.i2c_bus, self.i2c_adr, 0x07), 0x54)
+        self.assertEqual(read_device_register(self.i2c_bus, self.i2c_adr, 0x13), 0b1110_0000)
 
     # ---------------------------------------------------------------------
     # temperature measurements (external sensor)
@@ -324,9 +283,9 @@ class TestEmc2101PWM(unittest.TestCase):
 
     @unittest.skipIf(HAS_HARDWARE, "Skipping external sensor test.")
     def test_diode_present(self):
-        self.write_device_register(0x02, 0b0000_0000)
-        self.write_device_register(0x01, 0b0000_1111)
-        self.write_device_register(0x10, 0b0000_0000)
+        write_device_register(self.i2c_bus, self.i2c_adr, 0x02, 0b0000_0000)
+        write_device_register(self.i2c_bus, self.i2c_adr, 0x01, 0b0000_1111)
+        write_device_register(self.i2c_bus, self.i2c_adr, 0x10, 0b0000_0000)
         # -----------------------------------------------------------------
         computed = self.emc2101.get_external_sensor_state()
         expected = sut.ExternalSensorStatus.OK
@@ -341,9 +300,9 @@ class TestEmc2101PWM(unittest.TestCase):
          - 0x01 = 0b0111_1111
          - 0x10 = 0b0000_0000
         """
-        self.write_device_register(0x02, 0b0000_0100)
-        self.write_device_register(0x01, 0b0111_1111)
-        self.write_device_register(0x10, 0b0000_0000)
+        write_device_register(self.i2c_bus, self.i2c_adr, 0x02, 0b0000_0100)
+        write_device_register(self.i2c_bus, self.i2c_adr, 0x01, 0b0111_1111)
+        write_device_register(self.i2c_bus, self.i2c_adr, 0x10, 0b0000_0000)
         # -----------------------------------------------------------------
         computed = self.emc2101.get_external_sensor_state()
         expected = sut.ExternalSensorStatus.FAULT1
@@ -358,21 +317,21 @@ class TestEmc2101PWM(unittest.TestCase):
          - 0x01 = 0b0111_1111
          - 0x10 = 0b1110_0000
         """
-        self.write_device_register(0x02, 0b0000_0000)
-        self.write_device_register(0x01, 0b0111_1111)
-        self.write_device_register(0x10, 0b1110_0000)
+        write_device_register(self.i2c_bus, self.i2c_adr, 0x02, 0b0000_0000)
+        write_device_register(self.i2c_bus, self.i2c_adr, 0x01, 0b0111_1111)
+        write_device_register(self.i2c_bus, self.i2c_adr, 0x10, 0b1110_0000)
         # -----------------------------------------------------------------
         computed = self.emc2101.get_external_sensor_state()
         expected = sut.ExternalSensorStatus.FAULT2
         # -----------------------------------------------------------------
         self.assertEqual(computed, expected)
-        # self.assertFalse(bool(self.read_device_register(0x02) & 0b0000_0100))
-        # self.assertEqual(self.read_device_register(0x01), 0b0111_1111)
-        # self.assertEqual(self.read_device_register(0x10), 0b1110_0000)
+        # self.assertFalse(bool(read_device_register(self.i2c_bus, self.i2c_adr, 0x02) & 0b0000_0100))
+        # self.assertEqual(read_device_register(self.i2c_bus, self.i2c_adr, 0x01), 0b0111_1111)
+        # self.assertEqual(read_device_register(self.i2c_bus, self.i2c_adr, 0x10), 0b1110_0000)
 
     def test_has_sensor(self):
         computed = self.emc2101.has_external_sensor()
-        if self.read_device_register(0x01) == 0b0111_1111:
+        if read_device_register(self.i2c_bus, self.i2c_adr, 0x01) == 0b0111_1111:
             expected = False
         else:
             expected = True
@@ -396,7 +355,7 @@ class TestEmc2101PWM(unittest.TestCase):
     # ---------------------------------------------------------------------
 
     def test_update_lookup_table_is_disabled(self):
-        self.write_device_register(0x4A, 0b0010_0011)
+        write_device_register(self.i2c_bus, self.i2c_adr, 0x4A, 0b0010_0011)
         # -----------------------------------------------------------------
         computed = self.emc2101.is_lookup_table_enabled()
         expected = False
@@ -404,7 +363,7 @@ class TestEmc2101PWM(unittest.TestCase):
         self.assertEqual(computed, expected)
 
     def test_update_lookup_table_is_enabled(self):
-        self.write_device_register(0x4A, 0b0000_0011)
+        write_device_register(self.i2c_bus, self.i2c_adr, 0x4A, 0b0000_0011)
         # -----------------------------------------------------------------
         computed = self.emc2101.is_lookup_table_enabled()
         expected = True
@@ -419,22 +378,22 @@ class TestEmc2101PWM(unittest.TestCase):
         expected = True
         # -----------------------------------------------------------------
         self.assertEqual(computed, expected)  # update was performed
-        self.assertEqual(self.read_device_register(0x50), 0)
-        self.assertEqual(self.read_device_register(0x51), 0x00)
-        self.assertEqual(self.read_device_register(0x52), 0)
-        self.assertEqual(self.read_device_register(0x53), 0x00)
-        self.assertEqual(self.read_device_register(0x54), 0)
-        self.assertEqual(self.read_device_register(0x55), 0x00)
-        self.assertEqual(self.read_device_register(0x56), 0)
-        self.assertEqual(self.read_device_register(0x57), 0x00)
-        self.assertEqual(self.read_device_register(0x58), 0)
-        self.assertEqual(self.read_device_register(0x59), 0x00)
-        self.assertEqual(self.read_device_register(0x5A), 0)
-        self.assertEqual(self.read_device_register(0x5B), 0x00)
-        self.assertEqual(self.read_device_register(0x5C), 0)
-        self.assertEqual(self.read_device_register(0x5D), 0x00)
-        self.assertEqual(self.read_device_register(0x5E), 0)
-        self.assertEqual(self.read_device_register(0x5F), 0x00)
+        self.assertEqual(read_device_register(self.i2c_bus, self.i2c_adr, 0x50), 0)
+        self.assertEqual(read_device_register(self.i2c_bus, self.i2c_adr, 0x51), 0x00)
+        self.assertEqual(read_device_register(self.i2c_bus, self.i2c_adr, 0x52), 0)
+        self.assertEqual(read_device_register(self.i2c_bus, self.i2c_adr, 0x53), 0x00)
+        self.assertEqual(read_device_register(self.i2c_bus, self.i2c_adr, 0x54), 0)
+        self.assertEqual(read_device_register(self.i2c_bus, self.i2c_adr, 0x55), 0x00)
+        self.assertEqual(read_device_register(self.i2c_bus, self.i2c_adr, 0x56), 0)
+        self.assertEqual(read_device_register(self.i2c_bus, self.i2c_adr, 0x57), 0x00)
+        self.assertEqual(read_device_register(self.i2c_bus, self.i2c_adr, 0x58), 0)
+        self.assertEqual(read_device_register(self.i2c_bus, self.i2c_adr, 0x59), 0x00)
+        self.assertEqual(read_device_register(self.i2c_bus, self.i2c_adr, 0x5A), 0)
+        self.assertEqual(read_device_register(self.i2c_bus, self.i2c_adr, 0x5B), 0x00)
+        self.assertEqual(read_device_register(self.i2c_bus, self.i2c_adr, 0x5C), 0)
+        self.assertEqual(read_device_register(self.i2c_bus, self.i2c_adr, 0x5D), 0x00)
+        self.assertEqual(read_device_register(self.i2c_bus, self.i2c_adr, 0x5E), 0)
+        self.assertEqual(read_device_register(self.i2c_bus, self.i2c_adr, 0x5F), 0x00)
 
     def test_update_lookup_table_partial(self):
         # there's nothing specific decimal or hex about these values,
@@ -450,12 +409,12 @@ class TestEmc2101PWM(unittest.TestCase):
         expected = True
         # -----------------------------------------------------------------
         self.assertEqual(computed, expected)  # update was performed
-        self.assertEqual(self.read_device_register(0x50), 16)
-        self.assertEqual(self.read_device_register(0x51), 0x03)
-        self.assertEqual(self.read_device_register(0x52), 24)
-        self.assertEqual(self.read_device_register(0x53), 0x04)
+        self.assertEqual(read_device_register(self.i2c_bus, self.i2c_adr, 0x50), 16)
+        self.assertEqual(read_device_register(self.i2c_bus, self.i2c_adr, 0x51), 0x03)
+        self.assertEqual(read_device_register(self.i2c_bus, self.i2c_adr, 0x52), 24)
+        self.assertEqual(read_device_register(self.i2c_bus, self.i2c_adr, 0x53), 0x04)
         for offset in range(4, 16):
-            self.assertEqual(self.read_device_register(0x50 + offset), 0x00)
+            self.assertEqual(read_device_register(self.i2c_bus, self.i2c_adr, 0x50 + offset), 0x00)
 
     def test_update_lookup_table_full(self):
         # there's nothing specific decimal or hex about these values,
@@ -476,22 +435,22 @@ class TestEmc2101PWM(unittest.TestCase):
         expected = True
         # -----------------------------------------------------------------
         self.assertEqual(computed, expected)  # update was performed
-        self.assertEqual(self.read_device_register(0x50), 16)
-        self.assertEqual(self.read_device_register(0x51), 0x03)
-        self.assertEqual(self.read_device_register(0x52), 24)
-        self.assertEqual(self.read_device_register(0x53), 0x04)
-        self.assertEqual(self.read_device_register(0x54), 32)
-        self.assertEqual(self.read_device_register(0x55), 0x05)
-        self.assertEqual(self.read_device_register(0x56), 40)
-        self.assertEqual(self.read_device_register(0x57), 0x06)
-        self.assertEqual(self.read_device_register(0x58), 48)
-        self.assertEqual(self.read_device_register(0x59), 0x07)
-        self.assertEqual(self.read_device_register(0x5A), 56)
-        self.assertEqual(self.read_device_register(0x5B), 0x08)
-        self.assertEqual(self.read_device_register(0x5C), 64)
-        self.assertEqual(self.read_device_register(0x5D), 0x09)
-        self.assertEqual(self.read_device_register(0x5E), 72)
-        self.assertEqual(self.read_device_register(0x5F), 0x0A)
+        self.assertEqual(read_device_register(self.i2c_bus, self.i2c_adr, 0x50), 16)
+        self.assertEqual(read_device_register(self.i2c_bus, self.i2c_adr, 0x51), 0x03)
+        self.assertEqual(read_device_register(self.i2c_bus, self.i2c_adr, 0x52), 24)
+        self.assertEqual(read_device_register(self.i2c_bus, self.i2c_adr, 0x53), 0x04)
+        self.assertEqual(read_device_register(self.i2c_bus, self.i2c_adr, 0x54), 32)
+        self.assertEqual(read_device_register(self.i2c_bus, self.i2c_adr, 0x55), 0x05)
+        self.assertEqual(read_device_register(self.i2c_bus, self.i2c_adr, 0x56), 40)
+        self.assertEqual(read_device_register(self.i2c_bus, self.i2c_adr, 0x57), 0x06)
+        self.assertEqual(read_device_register(self.i2c_bus, self.i2c_adr, 0x58), 48)
+        self.assertEqual(read_device_register(self.i2c_bus, self.i2c_adr, 0x59), 0x07)
+        self.assertEqual(read_device_register(self.i2c_bus, self.i2c_adr, 0x5A), 56)
+        self.assertEqual(read_device_register(self.i2c_bus, self.i2c_adr, 0x5B), 0x08)
+        self.assertEqual(read_device_register(self.i2c_bus, self.i2c_adr, 0x5C), 64)
+        self.assertEqual(read_device_register(self.i2c_bus, self.i2c_adr, 0x5D), 0x09)
+        self.assertEqual(read_device_register(self.i2c_bus, self.i2c_adr, 0x5E), 72)
+        self.assertEqual(read_device_register(self.i2c_bus, self.i2c_adr, 0x5F), 0x0A)
 
     def test_update_lookup_table_toomany(self):
         # there's nothing specific decimal or hex about these values,
@@ -513,9 +472,9 @@ class TestEmc2101PWM(unittest.TestCase):
         self.assertRaises(ValueError, self.emc2101.update_lookup_table, values=values, unit=sut.FanSpeedUnit.STEP)
 
     def test_update_lookup_table_inuse(self):
-        self.write_device_register(0x4A, 0b0010_0000)  # allow lookup table update
+        write_device_register(self.i2c_bus, self.i2c_adr, 0x4A, 0b0010_0000)  # allow lookup table update
         computed = self.emc2101.update_lookup_table(values={}, unit=sut.FanSpeedUnit.STEP)
-        self.write_device_register(0x4A, 0b0000_0000)  # reenable lookup table
+        write_device_register(self.i2c_bus, self.i2c_adr, 0x4A, 0b0000_0000)  # reenable lookup table
         # there's nothing specific decimal or hex about these values,
         # using different number systems simply to make it easier to
         # see what's coming from where
@@ -529,13 +488,13 @@ class TestEmc2101PWM(unittest.TestCase):
         expected = True
         # -----------------------------------------------------------------
         self.assertEqual(computed, expected)  # update was performed
-        self.assertEqual(self.read_device_register(0x50), 16)
-        self.assertEqual(self.read_device_register(0x51), 0x03)
-        self.assertEqual(self.read_device_register(0x52), 24)
-        self.assertEqual(self.read_device_register(0x53), 0x04)
+        self.assertEqual(read_device_register(self.i2c_bus, self.i2c_adr, 0x50), 16)
+        self.assertEqual(read_device_register(self.i2c_bus, self.i2c_adr, 0x51), 0x03)
+        self.assertEqual(read_device_register(self.i2c_bus, self.i2c_adr, 0x52), 24)
+        self.assertEqual(read_device_register(self.i2c_bus, self.i2c_adr, 0x53), 0x04)
         for offset in range(4, 16):
-            self.assertEqual(self.read_device_register(0x50 + offset), 0x00)
-        self.assertEqual(self.read_device_register(0x4A), 0b0000_0000)  # lut was re-enabled
+            self.assertEqual(read_device_register(self.i2c_bus, self.i2c_adr, 0x50 + offset), 0x00)
+        self.assertEqual(read_device_register(self.i2c_bus, self.i2c_adr, 0x4A), 0b0000_0000)  # lut was re-enabled
 
     def test_update_lookup_table_too_low(self):
         values = {
@@ -555,8 +514,8 @@ class TestEmc2101PWM(unittest.TestCase):
 
     def test_reset_lookup(self):
         # initialize status register
-        self.write_device_register(0x02, 0x00)
-        self.write_device_register(0x4A, 0x20)  # allow lookup table update
+        write_device_register(self.i2c_bus, self.i2c_adr, 0x02, 0x00)
+        write_device_register(self.i2c_bus, self.i2c_adr, 0x4A, 0x20)  # allow lookup table update
         # populate with some non-zero values
         values = {
             20: 0x03,  # temp+speed #1
@@ -569,9 +528,9 @@ class TestEmc2101PWM(unittest.TestCase):
             72: 0x0A,  # temp+speed #8
         }
         self.emc2101.update_lookup_table(values=values, unit=sut.FanSpeedUnit.STEP)
-        self.write_device_register(0x4A, 0x00)  # reenable lookup table
+        write_device_register(self.i2c_bus, self.i2c_adr, 0x4A, 0x00)  # reenable lookup table
         # -----------------------------------------------------------------
         self.emc2101.reset_lookup_table()
         # -----------------------------------------------------------------
         for offset in range(0, 16):
-            self.assertEqual(self.read_device_register(0x50 + offset), 0x00)
+            self.assertEqual(read_device_register(self.i2c_bus, self.i2c_adr, 0x50 + offset), 0x00)
