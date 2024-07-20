@@ -14,7 +14,7 @@ from typing import Any
 # module busio provides no type hints
 import busio  # type: ignore
 
-from feeph.emc2101.emc2101_core import CONVERSIONS_PER_SECOND, Emc2101_core, ExternalSensorStatus, SpinUpDuration, SpinUpStrength
+from feeph.emc2101.core import CONVERSIONS_PER_SECOND, Emc2101_core, ExternalSensorStatus, SpinUpDuration, SpinUpStrength
 from feeph.emc2101.fan_configs import FanConfig, RpmControlMode, Steps, generic_pwm_fan
 
 LH = logging.getLogger(__name__)
