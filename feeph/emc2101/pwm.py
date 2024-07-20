@@ -14,9 +14,8 @@ from typing import Any
 # module busio provides no type hints
 import busio  # type: ignore
 
-from i2c.emc2101.emc2101_core import CONVERSIONS_PER_SECOND, Emc2101_core, ExternalSensorStatus, SpinUpDuration, SpinUpStrength
-from i2c.emc2101.fan_configs import FanConfig, RpmControlMode, Steps, generic_pwm_fan
-from i2c.i2c_device import I2cDevice
+from feeph.emc2101.core import CONVERSIONS_PER_SECOND, Emc2101_core, ExternalSensorStatus, SpinUpDuration, SpinUpStrength
+from feeph.emc2101.fan_configs import FanConfig, RpmControlMode, Steps, generic_pwm_fan
 
 LH = logging.getLogger(__name__)
 
@@ -69,37 +68,6 @@ ets_2n3904 = ExternalTemperatureSensorConfig(ideality_factor=0x12, beta_factor=0
 ets_2n3906 = ExternalTemperatureSensorConfig(ideality_factor=0x12, beta_factor=0x08)  # 2N3906 (PNP)
 
 
-class StatusRegister:
-    """
-    ```
-    self.tach      the TACH count has exceeded the TACH Limit
-    self.tcrit     external diode temperature has met or exceeded the TCRIT limit
-    self.fault     a diode fault has occurred on the external diode
-    self.ext_low   external diode temperature has fallen below the low limit
-    self.ext_high  external diode temperature has exceeded the high limit
-    self.eeprom    indicates that the EEPROM could not be found
-    self.int_high  internal temperature has met or exceeded the high limit
-    self.busy      indicates that the ADC is converting - does not trigger an interrupt
-    ```
-    """
-
-    def __init__(self, i2c_device: I2cDevice, register: int = 0x02):
-        self._register = register
-        self.update(i2c_device)
-
-    def update(self, i2c_device: I2cDevice):
-        value = i2c_device.read_register(self._register)
-        if value is not None:
-            self.tach     = value & 0b0000_0001
-            self.tcrit    = value & 0b0000_0010
-            self.fault    = value & 0b0000_0100
-            self.ext_low  = value & 0b0000_1000
-            self.ext_high = value & 0b0001_0000
-            self.eeprom   = value & 0b0010_0000
-            self.int_high = value & 0b0100_0000
-            self.busy     = value & 0b1000_0000
-
-
 class TemperatureLimitType(Enum):
     TO_COLD = 1
     TO_HOT  = 2
@@ -133,7 +101,7 @@ class Emc2101_PWM:
         elif fan_config.rpm_control_mode == RpmControlMode.PWM:
             # emc2101: PWM, fan: PWM -> works
             LH.info("EMC2101 and connected fan both use PWM to control fan speed. Good.")
-            from i2c.emc2101.scs import PWM
+            from feeph.emc2101.scs import PWM
             scs = PWM(fan_config=fan_config)
             pwm_d, pwm_f = calculate_pwm_factors(pwm_frequency=fan_config.pwm_frequency)
             emc2101.configure_pwm_control(pwm_d=pwm_d, pwm_f=pwm_f, step_max=max(scs.get_steps()))

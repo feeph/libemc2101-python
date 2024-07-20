@@ -4,7 +4,7 @@
 
 import unittest
 
-from i2c.emc2101.conversions import convert_bytes2temperature, convert_temperature2bytes
+from feeph.emc2101.conversions import convert_bytes2temperature, convert_temperature2bytes
 
 
 class TestConversions(unittest.TestCase):

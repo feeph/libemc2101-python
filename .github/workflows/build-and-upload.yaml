@@ -1,0 +1,21 @@
+---
+name: publish on TestPyPI
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+jobs:
+  build-and-upload:
+    name: build package and upload to PyPI
+    runs-on: ubuntu-latest
+    environment: publish-to-pypi-test
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v3
+      - uses: pdm-project/setup-pdm@v3
+      - name: Publish package distributions to PyPI
+        run: pdm publish --repository testpypi
