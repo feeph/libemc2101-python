@@ -18,9 +18,9 @@ authors = [
 ]
 requires-python = ">=3.10,<3.13"
 dependencies = [
+    "adafruit-blinka>=8.46.0",
     "adafruit-board-toolkit>=1.1.0",
-    "adafruit-circuitpython-busdevice>=5.2.0,<6.0.0",
-    "feeph-i2c>=0.4.0,<1.0.0",
+    "feeph-i2c>=0.4.1,<1.0.0",
     "gpiod>=2.1.0,<3.0.0",
     "pyyaml>=6.0.0,<7.0.0",
 ]
