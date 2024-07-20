@@ -5,7 +5,7 @@
 groups = ["default", "dev", "test"]
 strategy = ["inherit_metadata"]
 lock_version = "4.5.0"
-content_hash = "sha256:d756d18a575530d609b82b4dd5083ed73201ae912cd6bfb2a95e24b6b245393f"
+content_hash = "sha256:62b528cb220a838c09c97e451930d6bb984c4926b9b424e59a479ed90945bfed"
 
 [[metadata.targets]]
 requires_python = ">=3.10,<3.13"
@@ -264,7 +264,7 @@ files = [
 
 [[package]]
 name = "feeph-i2c"
-version = "0.4.1"
+version = "0.5.0"
 requires_python = "<3.13,>=3.10"
 summary = "abstraction layer for the I²C bus (incl. simulation for testing)"
 groups = ["default"]
@@ -274,8 +274,8 @@ dependencies = [
     "gpiod~=2.2",
 ]
 files = [
-    {file = "feeph_i2c-0.4.1-py3-none-any.whl", hash = "sha256:609d13edc2e86c2f3582350341836a489dfd0acb839cf0f59f7f3c1cb3c33586"},
-    {file = "feeph_i2c-0.4.1.tar.gz", hash = "sha256:09bfcb7883fa9491dead4ba3918813652b5a76694c40f302d4a2147aa0acface"},
+    {file = "feeph_i2c-0.5.0-py3-none-any.whl", hash = "sha256:ac95a9e2177dbf72c8e31c907d72cb19dff51c9e61b4bf75a08c7e10191dae89"},
+    {file = "feeph_i2c-0.5.0.tar.gz", hash = "sha256:90427ab4ffb0daa1197af8a177edfccc7494c7d5d93d096e6df7982aae308e0c"},
 ]
 
 [[package]]
