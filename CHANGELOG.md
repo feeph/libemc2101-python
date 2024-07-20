@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/feeph/libemc2101-python/compare/v0.2.0...v0.2.1) (2024-07-20)
+
+
+### Bug Fixes
+
+* fix 'configure_pin_six_as_alert()' and provide unit tests ([#23](https://github.com/feeph/libemc2101-python/issues/23)) ([be53285](https://github.com/feeph/libemc2101-python/commit/be53285a715c94cc52cb367c1ada127fb716465f))
+
 ## [0.2.0](https://github.com/feeph/libemc2101-python/compare/v0.1.3...v0.2.0) (2024-07-20)
 
 
