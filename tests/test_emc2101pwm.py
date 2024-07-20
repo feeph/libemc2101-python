@@ -15,7 +15,7 @@ import unittest
 # modules board and busio provide no type hints
 import board  # type: ignore
 import busio  # type: ignore
-from feeph.i2c import EmulatedI2C, read_device_register, write_device_register
+from feeph.i2c import EmulatedI2C, read_device_register, write_device_register, write_device_registers
 
 import i2c.emc2101.emc2101_core
 import i2c.emc2101.emc2101_pwm as sut  # sytem under test
@@ -131,8 +131,11 @@ class TestEmc2101PWM(unittest.TestCase):
     # control duty cycle using manual control
 
     def test_duty_cycle_read_steps(self):
-        write_device_register(self.i2c_bus, self.i2c_adr, 0x4A, 0b0010_0000)  # enable manual control
-        write_device_register(self.i2c_bus, self.i2c_adr, 0x4C, 0x08)         # number of steps depends on pwm frequency
+        writes = [
+            (self.i2c_adr, 0x4A, 1, 0b0010_0000),  # enable manual control
+            (self.i2c_adr, 0x4C, 1, 0x08),         # number of steps depends on pwm frequency
+        ]
+        write_device_registers(self.i2c_bus, writes)
         # -----------------------------------------------------------------
         computed = self.emc2101.get_fixed_speed(unit=sut.FanSpeedUnit.STEP)
         expected = 8
@@ -152,8 +155,11 @@ class TestEmc2101PWM(unittest.TestCase):
         self.assertRaises(ValueError, self.emc2101.set_fixed_speed, 20, unit=sut.FanSpeedUnit.STEP)
 
     def test_duty_cycle_read_percent(self):
-        write_device_register(self.i2c_bus, self.i2c_adr, 0x4A, 0b0010_0000)  # enable manual control
-        write_device_register(self.i2c_bus, self.i2c_adr, 0x4C, 0x08)         # number of steps depends on pwm frequency
+        writes = [
+            (self.i2c_adr, 0x4A, 1, 0b0010_0000),  # enable manual control
+            (self.i2c_adr, 0x4C, 1, 0x08),         # number of steps depends on pwm frequency
+        ]
+        write_device_registers(self.i2c_bus, writes)
         # -----------------------------------------------------------------
         computed = self.emc2101.get_fixed_speed(unit=sut.FanSpeedUnit.PERCENT)
         expected = 58
@@ -173,8 +179,11 @@ class TestEmc2101PWM(unittest.TestCase):
         self.assertRaises(ValueError, self.emc2101.set_fixed_speed, 105)
 
     def test_duty_cycle_read_rpm(self):
-        write_device_register(self.i2c_bus, self.i2c_adr, 0x4A, 0b0010_0000)  # enable manual control
-        write_device_register(self.i2c_bus, self.i2c_adr, 0x4C, 0x08)         # number of steps depends on pwm frequency
+        writes = [
+            (self.i2c_adr, 0x4A, 1, 0b0010_0000),  # enable manual control
+            (self.i2c_adr, 0x4C, 1, 0x08),         # number of steps depends on pwm frequency
+        ]
+        write_device_registers(self.i2c_bus, writes)
         # -----------------------------------------------------------------
         computed = self.emc2101.get_fixed_speed(unit=sut.FanSpeedUnit.RPM)
         expected = self.fan_config.maximum_rpm
@@ -242,8 +251,11 @@ class TestEmc2101PWM(unittest.TestCase):
         self.assertEqual(computed, expected, f"Got unexpected chip temperature limit '{computed}'.")
 
     def test_sensor_temperature_limit_read_lower(self):
-        write_device_register(self.i2c_bus, self.i2c_adr, 0x08, 0x12)         # external sensor low limit (decimal)
-        write_device_register(self.i2c_bus, self.i2c_adr, 0x14, 0b1110_0000)  # external sensor low limit (fraction)
+        writes = [
+            (self.i2c_adr, 0x08, 1, 0x12),         # external sensor low limit (decimal)
+            (self.i2c_adr, 0x14, 1, 0b1110_0000),  # external sensor low limit (fraction)
+        ]
+        write_device_registers(self.i2c_bus, writes)
         # -----------------------------------------------------------------
         computed = self.emc2101.get_sensor_temperature_limit(limit_type=sut.TemperatureLimitType.TO_COLD)
         expected = 18.9
@@ -260,8 +272,11 @@ class TestEmc2101PWM(unittest.TestCase):
         self.assertEqual(read_device_register(self.i2c_bus, self.i2c_adr, 0x14), 0b1110_0000)
 
     def test_sensor_temperature_limit_read_upper(self):
-        write_device_register(self.i2c_bus, self.i2c_adr, 0x07, 0x54)         # external sensor low limit (decimal)
-        write_device_register(self.i2c_bus, self.i2c_adr, 0x13, 0b1110_0000)  # external sensor low limit (fraction)
+        writes = [
+            (self.i2c_adr, 0x07, 1, 0x54),         # external sensor low limit (decimal)
+            (self.i2c_adr, 0x13, 1, 0b1110_0000),  # external sensor low limit (fraction)
+        ]
+        write_device_registers(self.i2c_bus, writes)
         # -----------------------------------------------------------------
         computed = self.emc2101.get_sensor_temperature_limit(limit_type=sut.TemperatureLimitType.TO_HOT)
         expected = 84.9
@@ -283,9 +298,12 @@ class TestEmc2101PWM(unittest.TestCase):
 
     @unittest.skipIf(HAS_HARDWARE, "Skipping external sensor test.")
     def test_diode_present(self):
-        write_device_register(self.i2c_bus, self.i2c_adr, 0x02, 0b0000_0000)
-        write_device_register(self.i2c_bus, self.i2c_adr, 0x01, 0b0000_1111)
-        write_device_register(self.i2c_bus, self.i2c_adr, 0x10, 0b0000_0000)
+        writes = [
+            (self.i2c_adr, 0x02, 1, 0b0000_0000),
+            (self.i2c_adr, 0x01, 1, 0b0000_1111),
+            (self.i2c_adr, 0x10, 1, 0b0000_0000),
+        ]
+        write_device_registers(self.i2c_bus, writes)
         # -----------------------------------------------------------------
         computed = self.emc2101.get_external_sensor_state()
         expected = sut.ExternalSensorStatus.OK
@@ -300,9 +318,12 @@ class TestEmc2101PWM(unittest.TestCase):
          - 0x01 = 0b0111_1111
          - 0x10 = 0b0000_0000
         """
-        write_device_register(self.i2c_bus, self.i2c_adr, 0x02, 0b0000_0100)
-        write_device_register(self.i2c_bus, self.i2c_adr, 0x01, 0b0111_1111)
-        write_device_register(self.i2c_bus, self.i2c_adr, 0x10, 0b0000_0000)
+        writes = [
+            (self.i2c_adr, 0x02, 1, 0b0000_0100),
+            (self.i2c_adr, 0x01, 1, 0b0111_1111),
+            (self.i2c_adr, 0x10, 1, 0b0000_0000),
+        ]
+        write_device_registers(self.i2c_bus, writes)
         # -----------------------------------------------------------------
         computed = self.emc2101.get_external_sensor_state()
         expected = sut.ExternalSensorStatus.FAULT1
@@ -317,9 +338,12 @@ class TestEmc2101PWM(unittest.TestCase):
          - 0x01 = 0b0111_1111
          - 0x10 = 0b1110_0000
         """
-        write_device_register(self.i2c_bus, self.i2c_adr, 0x02, 0b0000_0000)
-        write_device_register(self.i2c_bus, self.i2c_adr, 0x01, 0b0111_1111)
-        write_device_register(self.i2c_bus, self.i2c_adr, 0x10, 0b1110_0000)
+        writes = [
+            (self.i2c_adr, 0x02, 1, 0b0000_0000),
+            (self.i2c_adr, 0x01, 1, 0b0111_1111),
+            (self.i2c_adr, 0x10, 1, 0b1110_0000),
+        ]
+        write_device_registers(self.i2c_bus, writes)
         # -----------------------------------------------------------------
         computed = self.emc2101.get_external_sensor_state()
         expected = sut.ExternalSensorStatus.FAULT2
@@ -514,22 +538,21 @@ class TestEmc2101PWM(unittest.TestCase):
 
     def test_reset_lookup(self):
         # initialize status register
-        write_device_register(self.i2c_bus, self.i2c_adr, 0x02, 0x00)
-        write_device_register(self.i2c_bus, self.i2c_adr, 0x4A, 0x20)  # allow lookup table update
-        # populate with some non-zero values
-        values = {
-            20: 0x03,  # temp+speed #1
-            24: 0x04,  # temp+speed #2
-            32: 0x05,  # temp+speed #3
-            40: 0x06,  # temp+speed #4
-            48: 0x07,  # temp+speed #5
-            56: 0x08,  # temp+speed #6
-            64: 0x09,  # temp+speed #7
-            72: 0x0A,  # temp+speed #8
-        }
-        self.emc2101.update_lookup_table(values=values, unit=sut.FanSpeedUnit.STEP)
-        write_device_register(self.i2c_bus, self.i2c_adr, 0x4A, 0x00)  # reenable lookup table
+        writes = [
+            (self.i2c_adr, 0x02, 1, 0x00),
+            (self.i2c_adr, 0x4A, 1, 0x20),  # allow lookup table update
+        ]
+        # populate lookup table with non-zero values
+        for offset in range(0, 16, 2):
+            temp = 20 + (offset * 4)
+            speed = 3 + (offset * 1)
+            writes.append((self.i2c_adr, 0x50 + offset, 1, temp))
+            writes.append((self.i2c_adr, 0x51 + offset, 1, speed))
+        # reenable lookup table
+        writes.append((self.i2c_adr, 0x4A, 1, 0x00))
         # -----------------------------------------------------------------
+        # populate with values and restore initial state
+        write_device_registers(self.i2c_bus, writes)
         self.emc2101.reset_lookup_table()
         # -----------------------------------------------------------------
         for offset in range(0, 16):
