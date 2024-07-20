@@ -11,7 +11,7 @@
 
 [project]
 name = "feeph.emc2101"
-version = "0.1.3"
+version = "0.2.0"
 description = "library for EMC2101 fan control chip"
 authors = [
     {name = "Feeph Aifeimei", email = "55798703+feeph@users.noreply.github.com"},

@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.2.0](https://github.com/feeph/libemc2101-python/compare/v0.1.3...v0.2.0) (2024-07-20)
+
+
+### Features
+
+* convert to namespace package 'feeph.emc2101' ([8ad809b](https://github.com/feeph/libemc2101-python/commit/8ad809b28943108bdecfa68da4bfa3cfbe634ab2))
+* use combined reads and writes ([ea36005](https://github.com/feeph/libemc2101-python/commit/ea36005f92f0d1ed026deb8c55a17ee1450760fe))
+
+
+### Bug Fixes
+
+* export symbol 'ExternalSensorStatus' ([b21030f](https://github.com/feeph/libemc2101-python/commit/b21030f6f6d7749c9681c915aa6e2a04ef394fd4))
+
+
+### Documentation
+
+* update PyPI classifiers ([e0e02ba](https://github.com/feeph/libemc2101-python/commit/e0e02ba6287062d62226fb9a581835559764084b))
+* updated the ToDo list ([c079476](https://github.com/feeph/libemc2101-python/commit/c079476f7d0a29a6224e347c5e170625c0dd33e8))
+
 ## [0.1.3](https://github.com/feeph/libi2c-emc2101-python/compare/v0.1.2...v0.1.3) (2024-06-26)
 
 
