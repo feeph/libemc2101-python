@@ -25,7 +25,8 @@
 - [x] provide unit tests
     - [x] physical device
     - [x] simulated device
-- [ ] extract `i2c.i2c_device` as a separate library
+- [x] extract `i2c.i2c_device` as a separate library
+  - published `feeph.i2c` on TestPyPI
 
 ## quality of life
 
