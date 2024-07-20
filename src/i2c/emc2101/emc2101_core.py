@@ -13,7 +13,7 @@ from enum import Enum
 
 # module busio provides no type hints
 import busio  # type: ignore
-from feeph.i2c import read_device_register, write_device_register
+from feeph.i2c import read_device_register, read_device_registers, write_device_register, write_device_registers
 
 from i2c.emc2101.conversions import convert_bytes2temperature, convert_temperature2bytes
 
@@ -153,11 +153,14 @@ class Emc2101_core:
         return read_device_register(self._i2c_bus, self._i2c_adr, 0xFF)
 
     def describe_device(self):
-        manufacturer_id   = read_device_register(self._i2c_bus, self._i2c_adr, 0xFE)
+        reads = [
+            (self._i2c_adr, 0xFE, 1),  # manufacturer id
+            (self._i2c_adr, 0xFD, 1),  # product id
+            (self._i2c_adr, 0xFF, 1),  # product revision
+        ]
+        manufacturer_id, product_id, product_revision = read_device_registers(self._i2c_bus, reads)
         manufacturer_name = MANUFACTURER_IDS.get(manufacturer_id, "<unknown manufacturer>")
-        product_id        = read_device_register(self._i2c_bus, self._i2c_adr, 0xFD)
         product_name      = PRODUCT_IDS.get(product_id, "<unknown product>")
-        product_revision  = read_device_register(self._i2c_bus, self._i2c_adr, 0xFF)
         return f"{manufacturer_name} (0x{manufacturer_id:02X}) {product_name} (0x{product_id:02X}) (rev: {product_revision})"
 
     # ---------------------------------------------------------------------
@@ -168,10 +171,13 @@ class Emc2101_core:
         # set 0x03.2 to 0
         cfg_register_value = read_device_register(self._i2c_bus, self._i2c_adr, 0x03)
         if cfg_register_value is not None:
-            write_device_register(self._i2c_bus, self._i2c_adr, 0x03, cfg_register_value & 0b1111_1011)
-            # clear spin up behavior settings
-            # (spin up is unavailable when pin 6 is in alert mode)
-            write_device_register(self._i2c_bus, self._i2c_adr, 0x4B, 0b0000_0000)
+            writes = [
+                (self._i2c_adr, 0x03, 1, cfg_register_value & 0b1111_1011),
+                # clear spin up behavior settings
+                # (spin up is unavailable when pin 6 is in alert mode),
+                (self._i2c_adr, 0x4B, 1, 0b0000_0000)
+            ]
+            write_device_registers(self._i2c_bus, writes)
             return True
         else:
             LH.error("Unable to read config register!")
@@ -197,10 +203,13 @@ class Emc2101_core:
     def configure_pwm_control(self, pwm_d: int, pwm_f: int, step_max: int):
         # enable PWM control (set 0x03.4 to 0)
         cfg_register_value = read_device_register(self._i2c_bus, self._i2c_adr, 0x03)
-        write_device_register(self._i2c_bus, self._i2c_adr, 0x03, cfg_register_value & 0b1110_1111)
-        # configure pwm frequency divider settings
-        write_device_register(self._i2c_bus, self._i2c_adr, 0x4D, pwm_f)
-        write_device_register(self._i2c_bus, self._i2c_adr, 0x4E, pwm_d)
+        writes = [
+            (self._i2c_adr, 0x03, 1, cfg_register_value & 0b1110_1111),
+            # configure pwm frequency divider settings
+            (self._i2c_adr, 0x4D, 1, pwm_f),
+            (self._i2c_adr, 0x4E, 1, pwm_d),
+        ]
+        write_device_registers(self._i2c_bus, writes)
         # configure maximum allowed step
         self._step_max = step_max
 
@@ -237,8 +246,11 @@ class Emc2101_core:
         due to the way the RPM is measured the lowest possible value is 82 RPM
         """
         (msb, lsb) = _convert_rpm2tach(minimum_rpm)
-        write_device_register(self._i2c_bus, self._i2c_adr, 0x48, lsb)  # TACH Limit Low Byte
-        write_device_register(self._i2c_bus, self._i2c_adr, 0x49, msb)  # TACH Limit High Byte
+        writes = [
+            (self._i2c_adr, 0x48, 1, lsb),  # TACH Limit Low Byte
+            (self._i2c_adr, 0x49, 1, msb),  # TACH Limit High Byte
+        ]
+        write_device_registers(self._i2c_bus, writes)
 
     def get_rpm(self) -> int | None:
         """
@@ -249,8 +261,11 @@ class Emc2101_core:
         if self._uses_tacho_mode():
             # get tacho readings
             # (the order of is important; see datasheet section 6.1 for details)
-            lsb = read_device_register(self._i2c_bus, self._i2c_adr, 0x46)  # TACH Reading Low Byte, must be read first!
-            msb = read_device_register(self._i2c_bus, self._i2c_adr, 0x47)  # TACH Reading High Byte
+            reads = [
+                (self._i2c_adr, 0x46, 1),  # TACH Reading Low Byte, must be read first!
+                (self._i2c_adr, 0x47, 1),  # TACH Reading High Byte
+            ]
+            lsb, msb = read_device_registers(self._i2c_bus, reads)
             LH.debug("tach readings: LSB=0x%02X MSB=0x%02X", lsb, msb)
             return _convert_tach2rpm(msb=msb, lsb=lsb)
         else:
@@ -323,14 +338,16 @@ class Emc2101_core:
         # 0x50..0x5f (8 x 2 registers; temp->step)
         offset = 0
         # set provided value
+        writes = []
         for temp, step in values.items():
-            write_device_register(self._i2c_bus, self._i2c_adr, 0x50 + offset, temp)
-            write_device_register(self._i2c_bus, self._i2c_adr, 0x51 + offset, step)
+            writes.append((self._i2c_adr, 0x50 + offset, 1, temp))
+            writes.append((self._i2c_adr, 0x51 + offset, 1, step))
             offset += 2
         # fill remaining slots
         for offset in range(offset, 16, 2):
-            write_device_register(self._i2c_bus, self._i2c_adr, 0x50 + offset, 0x00)
-            write_device_register(self._i2c_bus, self._i2c_adr, 0x51 + offset, 0x00)
+            writes.append((self._i2c_adr, 0x50 + offset, 1, 0x00))
+            writes.append((self._i2c_adr, 0x51 + offset, 1, 0x00))
+        write_device_registers(self._i2c_bus, writes)
         # reenable lookup table if it was previously enabled
         if reenable_lut:
             self.enable_lookup_table()
@@ -340,9 +357,11 @@ class Emc2101_core:
         # must disable lookup table to make it writeable
         self.disable_lookup_table()
         # set all slots to zero
+        writes = []
         for offset in range(0, 16, 2):
-            write_device_register(self._i2c_bus, self._i2c_adr, 0x50 + offset, 0x00)
-            write_device_register(self._i2c_bus, self._i2c_adr, 0x51 + offset, 0x00)
+            writes.append((self._i2c_adr, 0x50 + offset, 1, 0x00))
+            writes.append((self._i2c_adr, 0x51 + offset, 1, 0x00))
+        write_device_registers(self._i2c_bus, writes)
 
     # ---------------------------------------------------------------------
     # temperature measurements
@@ -386,8 +405,11 @@ class Emc2101_core:
         # The status register 0x02 has a diode fault bit but that bit is
         # set only if there is an open circuit between DP-DN.
         # (It is NOT set if there is a short circuit between DP-DN.)
-        msb = read_device_register(self._i2c_bus, self._i2c_adr, 0x01)  # high byte, must be read first!
-        lsb = read_device_register(self._i2c_bus, self._i2c_adr, 0x10)  # low byte
+        reads = [
+            (self._i2c_adr, 0x01, 1),  # high byte, must be read first!
+            (self._i2c_adr, 0x10, 1),  # low byte
+        ]
+        msb, lsb = read_device_registers(self._i2c_bus, reads)
         if msb != 0b0111_1111:
             return ExternalSensorStatus.OK
         else:
@@ -412,8 +434,11 @@ class Emc2101_core:
 
         the datasheet guarantees a precision of +/- 1°C
         """
-        msb = read_device_register(self._i2c_bus, self._i2c_adr, 0x01)  # high byte, must be read first!
-        lsb = read_device_register(self._i2c_bus, self._i2c_adr, 0x10)  # low byte
+        reads = [
+            (self._i2c_adr, 0x01, 1),  # high byte, must be read first!
+            (self._i2c_adr, 0x10, 1),  # low byte
+        ]
+        msb, lsb = read_device_registers(self._i2c_bus, reads)
         if msb != 0b0111_1111:
             return convert_bytes2temperature(msb, lsb)
         else:
@@ -423,8 +448,11 @@ class Emc2101_core:
         """
         get upper/lower temperature alerting limit in °C
         """
-        msb = read_device_register(self._i2c_bus, self._i2c_adr, 0x08)
-        lsb = read_device_register(self._i2c_bus, self._i2c_adr, 0x14)
+        reads = [
+            (self._i2c_adr, 0x08, 1),  # high byte, must be read first!
+            (self._i2c_adr, 0x14, 1),  # low byte
+        ]
+        msb, lsb = read_device_registers(self._i2c_bus, reads)
         return convert_bytes2temperature(msb, lsb)
 
     def set_sensor_low_temperature_limit(self, value: float) -> float:
@@ -436,8 +464,11 @@ class Emc2101_core:
         """
         if self._temp_min <= value <= self._temp_max:
             (msb, lsb) = convert_temperature2bytes(value)
-            write_device_register(self._i2c_bus, self._i2c_adr, 0x08, msb)
-            write_device_register(self._i2c_bus, self._i2c_adr, 0x14, lsb)
+            writes = [
+                (self._i2c_adr, 0x08, 1, msb),
+                (self._i2c_adr, 0x14, 1, lsb),
+            ]
+            write_device_registers(self._i2c_bus, writes)
             return convert_bytes2temperature(msb, lsb)
         else:
             raise ValueError(f"temperature limit out of range ({self._temp_min} ≤ x ≤ {self._temp_max}°C)")
@@ -446,8 +477,11 @@ class Emc2101_core:
         """
         get upper/lower temperature alerting limit in °C
         """
-        msb = read_device_register(self._i2c_bus, self._i2c_adr, 0x07)
-        lsb = read_device_register(self._i2c_bus, self._i2c_adr, 0x13)
+        reads = [
+            (self._i2c_adr, 0x07, 1),  # high byte, must be read first!
+            (self._i2c_adr, 0x13, 1),  # low byte
+        ]
+        msb, lsb = read_device_registers(self._i2c_bus, reads)
         return convert_bytes2temperature(msb, lsb)
 
     def set_sensor_high_temperature_limit(self, value: float) -> float:
@@ -459,8 +493,11 @@ class Emc2101_core:
         """
         if self._temp_min <= value <= self._temp_max:
             (msb, lsb) = convert_temperature2bytes(value)
-            write_device_register(self._i2c_bus, self._i2c_adr, 0x07, msb)
-            write_device_register(self._i2c_bus, self._i2c_adr, 0x13, lsb)
+            writes = [
+                (self._i2c_adr, 0x07, 1, msb),
+                (self._i2c_adr, 0x13, 1, lsb),
+            ]
+            write_device_registers(self._i2c_bus, writes)
             return convert_bytes2temperature(msb, lsb)
         else:
             raise ValueError("temperature limit out of range (0 ≤ x ≤ 85°C)")
@@ -489,9 +526,12 @@ class Emc2101_core:
         """
         # stop reading from register
         fan_config = read_device_register(self._i2c_bus, self._i2c_adr, 0x4A)
-        write_device_register(self._i2c_bus, self._i2c_adr, 0x4A, fan_config & 0b1011_1111)
-        # reset register to default state
-        write_device_register(self._i2c_bus, self._i2c_adr, 0x0C, 0x00)
+        writes = [
+            (self._i2c_adr, 0x4A, 1, fan_config & 0b1011_1111),
+            # reset register to default state
+            (self._i2c_adr, 0x0C, 1, 0x00),
+        ]
+        write_device_registers(self._i2c_bus, writes)
 
     # ---------------------------------------------------------------------
     # convenience functions
@@ -525,8 +565,10 @@ class Emc2101_core:
 
     def reset_device_registers(self):
         LH.debug("Resetting all device registers to their default values.")
+        writes = []
         for register, value in DEFAULTS.items():
-            write_device_register(self._i2c_bus, self._i2c_adr, register, value)
+            writes.append((self._i2c_adr, register, 1, value))
+        write_device_registers(self._i2c_bus, writes)
 
     def configure_external_temperature_sensor(self, dif: int, bcf: int) -> bool:
         """
@@ -539,8 +581,11 @@ class Emc2101_core:
         dev_status = read_device_register(self._i2c_bus, self._i2c_adr, 0x02)
         if not dev_status & 0b0000_0100:
             LH.debug("The diode fault bit is clear.")
-            write_device_register(self._i2c_bus, self._i2c_adr, 0x12, dif)
-            write_device_register(self._i2c_bus, self._i2c_adr, 0x18, bcf)
+            writes = [
+                (self._i2c_adr, 0x12, 1, dif),
+                (self._i2c_adr, 0x18, 1, bcf),
+            ]
+            write_device_registers(self._i2c_bus, writes)
             return True
         else:
             LH.error("The diode fault bit is set: Sensor is faulty or missing.")
