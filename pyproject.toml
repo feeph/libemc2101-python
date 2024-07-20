@@ -79,6 +79,8 @@ includes = ["feeph/"]
 source-includes = ["tests/"]
 
 [tool.pdm.dev-dependencies]
+dev = [
+]
 test = [
     "autopep8     ~= 2.2",
     "flake8       ~= 7.0",
@@ -87,10 +89,6 @@ test = [
     "pytest-sugar ~= 1.0",
     "types-PyYAML>=6.0.12.20240311",
 ]
-tox = []
-dev = [
-]
-tests = []
 
 [[tool.pdm.source]]
 name = "testpypi"
