@@ -41,3 +41,4 @@
 - [x] provide package configuration (setup-tools, poetry, ...)
 - [x] automate release management (release-please, commitizen, ...)
 - [x] automate compatibility testing (tox+pyenv)
+- [x] automate publishing to TestPyPI
