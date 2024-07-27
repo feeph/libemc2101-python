@@ -37,7 +37,7 @@ jobs:
         with:
           files_yaml: |
             library:
-              - {{ cookiecutter.package_namespace }}/**.py
+              - feeph/**.py
             contrib:
               - examples/**.py
               - test/**.py
@@ -63,7 +63,7 @@ jobs:
         run: |
           # since this is a namespace package we must instruct mypy to scan
           # the code as a namespace package; it won't work if we scan files
-          pdm run mypy -p {{ cookiecutter.package_namespace }}.{{ cookiecutter.package_name }}
+          pdm run mypy -p feeph.emc2101
           # example scripts and tests can be scanned as files
           if [[ -n $CONTRIB_FILES ]] ; then
             pdm run mypy $CONTRIB_FILES
