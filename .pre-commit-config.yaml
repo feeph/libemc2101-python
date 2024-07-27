@@ -4,8 +4,10 @@
 #
 # perform once after cloning the repository:
 #  pipx install pre-commit
-#  pre-commit install --hook-type pre-commit
-#  pre-commit install --hook-type commit-msg
+#  pre-commit install --allow-missing-config --hook-type pre-commit
+#  pre-commit install --allow-missing-config --hook-type commit-msg
+#  pre-commit install --allow-missing-config --hook-type post-commit
+#  pre-commit install --allow-missing-config --hook-type pre-push
 #
 # if you want to trigger pre-commit manually:
 #  pre-commit run
@@ -14,6 +16,8 @@ repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v2.3.0
     hooks:
+      - id: check-json
+      - id: check-toml
       - id: check-yaml
       - id: end-of-file-fixer
       - id: trailing-whitespace
@@ -40,3 +44,31 @@ repos:
     rev: 7.0.0
     hooks:
       - id: flake8
+  # -----------------------------------------------------------------------
+  # !! post-commit can't prevent the commit from happening !!
+  #
+  # At this point we can only complain that the commit wasn't signed
+  # properly and provide a warning that something isn't right and remind
+  # the user to go back and fix this specific commit.
+  #
+  # (We rely on the 'pre-push' stage to prevent pushing of unsigned commits.)
+  - repo: local
+    hooks:
+      - id: commit-signed
+        name: Verify commit is signed
+        stages:
+            - post-commit
+        always_run: true
+        language: system
+        entry: git
+        args: [ "verify-commit", "HEAD" ]
+  # -----------------------------------------------------------------------
+  - repo: local
+    hooks:
+      - id: signed-commits
+        name: Verify signature
+        language: script
+        entry: scripts/verify_commits-are-signed
+        args: [ "$PRE_COMMIT_FROM_REF", "$PRE_COMMIT_TO_REF" ]
+        stages:
+            - pre-push

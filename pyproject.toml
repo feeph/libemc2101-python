@@ -1,18 +1,26 @@
+# quickstart:
+#   pdm install
+#   pdm run pytest
+
+# dependencies
+#   - use `pdm add <package>` and `pdm remove <package>` to manage dependencies
+#   - use `pdm add -d -G dev <packag>` to add a dev dependency
+#   - use `pdm update --update-all` to update dependencies
+#   - use `pdm install` to install dependencies
+
+# usage:
+#   - use `pdm run <pythonfile>` to execute code
+#   - use `pdm run pytest` to perform unit tests
+
 # line lengths:
 #   - Excessive line lengths aren't good. But rather then automatically
 #     breaking them and turning into vertical blocks we want to see the
 #     nastiness sticking out prominently.
-#
-# black:
-#   - If the question is "Black?" the answer is "No!"
-#   - We use autopep8 to confirm compliance with PEP8, going beyond that
-#     is not necessary. If you want to apply black, then fine, go ahead.
-#     But we're not going to enforce or encourage it.
 
 [project]
 name = "feeph.emc2101"
 version = "0.2.1"
-description = "library for EMC2101 fan control chip"
+description = "library for I²C-based EMC2101 PWM fan controller"
 authors = [
     {name = "Feeph Aifeimei", email = "55798703+feeph@users.noreply.github.com"},
 ]
@@ -69,10 +77,16 @@ in-place = true
 [tool.pdm]
 distribution = true
 
-# automatically update requirements.txt on `pdm lock`
+# automatically update requirements.txt and requirements-dev.txt
+# on `pdm lock`
+
 [[tool.pdm.autoexport]]
 filename = "requirements.txt"
-groups = ["default", "test"]
+groups = ["default"]
+
+[[tool.pdm.autoexport]]
+filename = "requirements-dev.txt"
+groups = ["dev", "tools"]
 
 [tool.pdm.build]
 includes = ["feeph/"]
@@ -80,17 +94,21 @@ source-includes = ["tests/"]
 
 [tool.pdm.dev-dependencies]
 dev = [
+    "types-PyYAML>=6.0.12.20240311",
 ]
-test = [
+tools = [
     "autopep8     ~= 2.2",
     "flake8       ~= 7.0",
     "mypy         ~= 1.10",
     "pytest-cov   ~= 5.0",
     "pytest-sugar ~= 1.0",
-    "types-PyYAML>=6.0.12.20240311",
 ]
 
+# during development: fetch all packages in our namespace from TestPyPI
+#
+# this config is used exclusively by pdm and has no impact on regular
+# consumers using `pip install <package>` to install the package
 [[tool.pdm.source]]
 name = "testpypi"
 url = "https://test.pypi.org/simple/"
-include_packages = ["feeph-i2c"]
+include_packages = ["feeph-*"]

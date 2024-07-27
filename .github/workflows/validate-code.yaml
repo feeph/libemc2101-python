@@ -1,0 +1,101 @@
+---
+#
+# If the committer has run `tox` on their local machine and fixed all
+# identified issues then this check is expected to run perfectly fine.
+#
+
+name: verify pull request
+
+on:
+  push:
+
+# our tox configuration leverages pyenv to test on multiple Python versions.
+# It is unclear if we can leverage actions/setup-python@v4 to do the same.
+#
+# Even if it's possible it may be better to keep the workflows separate:
+#  - using a matrix strategy gives us a direct feedback within GHA which
+#    specific Python version failed to validate without looking at console
+#  - using a matrix strategy enables parallel execution
+#  - splitting local testing and GHA testing allows us to define different
+#    strictness levels:
+#    - local testing may leverage stricter validation tools (pylint/ruff)
+#      and/or wider range of Python versions (specific versions, future
+#      versions).
+#    - pull request tests act as a gatekeeper and define an absolute level
+#      that must be reached and maintained
+
+jobs:
+  lint:
+    name: lint the code
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout repository
+        uses: actions/checkout@v4
+      - name: identify changed files
+        uses: tj-actions/changed-files@v44
+        id: changed-files
+        with:
+          files_yaml: |
+            library:
+              - feeph/**.py
+            contrib:
+              - examples/**.py
+              - test/**.py
+      - name: configure Python (using PDM)
+        uses: pdm-project/setup-pdm@v4
+        with:
+          python-version-file: pyproject.toml
+      - name: install dependencies
+        run: |
+          pdm install
+      - name: lint code (flake8)
+        env:
+          LIBRARY_FILES: ${{ steps.changed-files.outputs.library_all_changed_files }}
+          CONTRIB_FILES: ${{ steps.changed-files.outputs.contrib_all_changed_files }}
+        run: |
+          if [[ -n $LIBRARY_FILES ]] || [[ -n $CONTRIB_FILES ]]  ; then
+            # the GitHub editor is 127 chars wide
+            pdm run flake8 --max-line-length=127 --show-source --statistics $LIBRARY_FILES $CONTRIB_FILES
+          fi
+      - name: lint code (mypy)
+        env:
+          CONTRIB_FILES: ${{ steps.changed-files.outputs.contrib_all_changed_files }}
+        run: |
+          # since this is a namespace package we must instruct mypy to scan
+          # the code as a namespace package; it won't work if we scan files
+          pdm run mypy -p feeph.emc2101
+          # example scripts and tests can be scanned as files
+          if [[ -n $CONTRIB_FILES ]] ; then
+            pdm run mypy $CONTRIB_FILES
+          fi
+  test:
+    name: perform unit tests
+    # wait on linting results; makes no sense to test if the code is broken
+    needs: lint
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version:
+          - "3.10"
+          - "3.11"
+          - "3.12"
+    steps:
+      - name: checkout repository
+        uses: actions/checkout@v4
+      - name: configure Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pytest pytest-md pytest-emoji
+      # https://github.com/marketplace/actions/run-pytest
+      - name: perform unit tests (Python ${{ matrix.python-version }})
+        env:
+          PYTHONPATH: .
+        uses: pavelzw/pytest-action@v2
+        with:
+          custom-arguments: '-q'
+          emoji: false
+          report-title: 'Test Report (Python ${{ matrix.python-version }})'
