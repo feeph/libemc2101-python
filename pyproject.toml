@@ -4,6 +4,7 @@
 
 # dependencies
 #   - use `pdm add <package>` and `pdm remove <package>` to manage dependencies
+#   - use `pdm add -d -G dev <packag>` to add a dev dependency
 #   - use `pdm update --update-all` to update dependencies
 #   - use `pdm install` to install dependencies
 
@@ -76,10 +77,16 @@ in-place = true
 [tool.pdm]
 distribution = true
 
-# automatically update requirements.txt on `pdm lock`
+# automatically update requirements.txt and requirements-dev.txt
+# on `pdm lock`
+
 [[tool.pdm.autoexport]]
 filename = "requirements.txt"
-groups = ["default", "test"]
+groups = ["default"]
+
+[[tool.pdm.autoexport]]
+filename = "requirements-dev.txt"
+groups = ["dev", "test"]
 
 [tool.pdm.build]
 includes = ["feeph/"]
@@ -87,14 +94,14 @@ source-includes = ["tests/"]
 
 [tool.pdm.dev-dependencies]
 dev = [
+    "types-PyYAML>=6.0.12.20240311",
 ]
-test = [
+tools = [
     "autopep8     ~= 2.2",
     "flake8       ~= 7.0",
     "mypy         ~= 1.10",
     "pytest-cov   ~= 5.0",
     "pytest-sugar ~= 1.0",
-    "types-PyYAML>=6.0.12.20240311",
 ]
 
 # during development: fetch all packages in our namespace from TestPyPI
