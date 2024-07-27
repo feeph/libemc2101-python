@@ -86,7 +86,7 @@ groups = ["default"]
 
 [[tool.pdm.autoexport]]
 filename = "requirements-dev.txt"
-groups = ["dev", "test"]
+groups = ["dev", "tools"]
 
 [tool.pdm.build]
 includes = ["feeph/"]
