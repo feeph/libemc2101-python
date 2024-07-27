@@ -1,0 +1,7 @@
+---
+#
+# use release-please as a GitHub App
+# https://github.com/googleapis/repo-automation-bots/tree/main/packages/release-please
+#
+handleGHRelease: true
+manifest: true

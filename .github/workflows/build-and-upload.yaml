@@ -1,4 +1,9 @@
 ---
+# You may or may not want to use this workflow depending on what you're
+# developing, how mature it is and whether it needs to be published to
+# a private repository or if it's suitable to publish on TestPyPI/PyPI.
+# -> Please activate/change/remove this workflow as needed.
+
 name: publish on TestPyPI
 
 on:
@@ -6,11 +11,16 @@ on:
     types: [published]
   workflow_dispatch:
 
+# It is strongly recommended to use a trusted publisher when publishing to
+# TestPyPI or PyPI. This is an OIDC based workflow and avoids the need to
+# configure long-running, shared credentials. For a detailed description
+# please refer to https://docs.pypi.org/trusted-publishers/
+
 jobs:
   build-and-upload:
-    name: build package and upload to PyPI
+    name: build package and upload to TestPyPI
     runs-on: ubuntu-latest
-    environment: publish-to-pypi-test
+    environment: publish-to-testpypi
     permissions:
       contents: read
       id-token: write

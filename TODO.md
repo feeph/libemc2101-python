@@ -31,8 +31,8 @@
 ## quality of life
 
 - [ ] provide docstrings
-- [ ] provide readme
-- [ ] provide contribution guide
+- [x] provide readme
+- [x] provide contribution guide
 - [ ] provide editorconfig
 - [x] pre-commit hooks
   - [x] validate code (pylint/flake8, ...)

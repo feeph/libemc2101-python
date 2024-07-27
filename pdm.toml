@@ -1,0 +1,9 @@
+#
+# use pdm config to see effective values
+#
+# documentation:
+#  - https://pdm-project.org/latest/reference/configuration/
+#
+
+[strategy]
+save = "compatible"
