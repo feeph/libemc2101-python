@@ -72,7 +72,7 @@ files = [
 
 [[package]]
 name = "adafruit-circuitpython-requests"
-version = "4.1.4"
+version = "4.1.6"
 summary = "A requests-like library for web interfacing"
 groups = ["default"]
 dependencies = [
@@ -80,8 +80,8 @@ dependencies = [
     "Adafruit-Circuitpython-ConnectionManager",
 ]
 files = [
-    {file = "adafruit_circuitpython_requests-4.1.4-py3-none-any.whl", hash = "sha256:519d18f5ddbc5f7ba02a7079fcdf7947430fb422fd9c2c42c1c4480cb48e47be"},
-    {file = "adafruit_circuitpython_requests-4.1.4.tar.gz", hash = "sha256:516ba2795f8295c82c8928681b047385c3f6998a6bcfd2c2d765e8a70a562ed5"},
+    {file = "adafruit_circuitpython_requests-4.1.6-py3-none-any.whl", hash = "sha256:4a7435ecf13924c1143b3204e0695cf17c91e18010741a29088892d73feaafb6"},
+    {file = "adafruit_circuitpython_requests-4.1.6.tar.gz", hash = "sha256:faf9b8ce563763844126aefbddb2a7e4ea57e2edfeae589779df7d209c7dcd84"},
 ]
 
 [[package]]
@@ -263,7 +263,7 @@ files = [
 
 [[package]]
 name = "feeph-i2c"
-version = "0.6.0"
+version = "0.7.0"
 requires_python = "<3.13,>=3.10"
 summary = "abstraction layer for the I²C bus (incl. simulation for testing)"
 groups = ["default"]
@@ -273,8 +273,8 @@ dependencies = [
     "gpiod~=2.2",
 ]
 files = [
-    {file = "feeph_i2c-0.6.0-py3-none-any.whl", hash = "sha256:e31db53b6f95db5b262c6dd7304771d0921fdcec4e005314ffc84d050555385d"},
-    {file = "feeph_i2c-0.6.0.tar.gz", hash = "sha256:77dcfff13343b532298b8e1ce1a3e5c3f03345a16b3b723f141fd623d8d35ee6"},
+    {file = "feeph_i2c-0.7.0-py3-none-any.whl", hash = "sha256:55194265ceb4ae45bcd70796a79e4ac338ec143dc9afc2e68233522d3b62c015"},
+    {file = "feeph_i2c-0.7.0.tar.gz", hash = "sha256:c53b80270e60b60c691b48ecf2527d96e27e09b47866bf2c003ddbd1857890ac"},
 ]
 
 [[package]]

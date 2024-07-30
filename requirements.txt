@@ -28,9 +28,9 @@ adafruit-pureio==1.1.11 \
 binho-host-adapter==0.1.6 \
     --hash=sha256:1e6da7a84e208c13b5f489066f05774bff1d593d0f5bf1ca149c2b8e83eae856 \
     --hash=sha256:f71ca176c1e2fc1a5dce128beb286da217555c6c7c805f2ed282a6f3507ec277
-feeph-i2c==0.6.0 \
-    --hash=sha256:77dcfff13343b532298b8e1ce1a3e5c3f03345a16b3b723f141fd623d8d35ee6 \
-    --hash=sha256:e31db53b6f95db5b262c6dd7304771d0921fdcec4e005314ffc84d050555385d
+feeph-i2c==0.7.0 \
+    --hash=sha256:55194265ceb4ae45bcd70796a79e4ac338ec143dc9afc2e68233522d3b62c015 \
+    --hash=sha256:c53b80270e60b60c691b48ecf2527d96e27e09b47866bf2c003ddbd1857890ac
 gpiod==2.2.0 \
     --hash=sha256:0fbfe4c2b28b47eaea759935ee462aceff0d17f0aacfdf984ea948d72f751ef7 \
     --hash=sha256:3be6c8ea840c167de5bda498ff09146d6a6f2999e17e35fe2caf586ba73e739b \
