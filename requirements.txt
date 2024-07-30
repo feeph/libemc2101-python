@@ -13,9 +13,9 @@ adafruit-circuitpython-busdevice==5.2.9 \
 adafruit-circuitpython-connectionmanager==3.1.1 \
     --hash=sha256:0b6df0f18c25208b59a007f7dcde58d8b147643738a1cd9ac03f3b1ac0129540 \
     --hash=sha256:652bf7ec8a12f5a8b086b4d3540d56c53dc82915a6a08b0b8e46a1b82b0ad535
-adafruit-circuitpython-requests==4.1.4 \
-    --hash=sha256:516ba2795f8295c82c8928681b047385c3f6998a6bcfd2c2d765e8a70a562ed5 \
-    --hash=sha256:519d18f5ddbc5f7ba02a7079fcdf7947430fb422fd9c2c42c1c4480cb48e47be
+adafruit-circuitpython-requests==4.1.6 \
+    --hash=sha256:4a7435ecf13924c1143b3204e0695cf17c91e18010741a29088892d73feaafb6 \
+    --hash=sha256:faf9b8ce563763844126aefbddb2a7e4ea57e2edfeae589779df7d209c7dcd84
 adafruit-circuitpython-typing==1.10.3 \
     --hash=sha256:4c5c1eeb3ae8a3d2dfa75129654c73690fbdb576d9069542a6ea3355467e1e74 \
     --hash=sha256:4e23d6828deafa4dfd554fd7d3f06b8ff8e2cc554b9c7aecba9d778d45970c18
@@ -28,9 +28,9 @@ adafruit-pureio==1.1.11 \
 binho-host-adapter==0.1.6 \
     --hash=sha256:1e6da7a84e208c13b5f489066f05774bff1d593d0f5bf1ca149c2b8e83eae856 \
     --hash=sha256:f71ca176c1e2fc1a5dce128beb286da217555c6c7c805f2ed282a6f3507ec277
-feeph-i2c==0.6.0 \
-    --hash=sha256:77dcfff13343b532298b8e1ce1a3e5c3f03345a16b3b723f141fd623d8d35ee6 \
-    --hash=sha256:e31db53b6f95db5b262c6dd7304771d0921fdcec4e005314ffc84d050555385d
+feeph-i2c==0.7.0 \
+    --hash=sha256:55194265ceb4ae45bcd70796a79e4ac338ec143dc9afc2e68233522d3b62c015 \
+    --hash=sha256:c53b80270e60b60c691b48ecf2527d96e27e09b47866bf2c003ddbd1857890ac
 gpiod==2.2.0 \
     --hash=sha256:0fbfe4c2b28b47eaea759935ee462aceff0d17f0aacfdf984ea948d72f751ef7 \
     --hash=sha256:3be6c8ea840c167de5bda498ff09146d6a6f2999e17e35fe2caf586ba73e739b \
