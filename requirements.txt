@@ -13,9 +13,9 @@ adafruit-circuitpython-busdevice==5.2.9 \
 adafruit-circuitpython-connectionmanager==3.1.1 \
     --hash=sha256:0b6df0f18c25208b59a007f7dcde58d8b147643738a1cd9ac03f3b1ac0129540 \
     --hash=sha256:652bf7ec8a12f5a8b086b4d3540d56c53dc82915a6a08b0b8e46a1b82b0ad535
-adafruit-circuitpython-requests==4.1.4 \
-    --hash=sha256:516ba2795f8295c82c8928681b047385c3f6998a6bcfd2c2d765e8a70a562ed5 \
-    --hash=sha256:519d18f5ddbc5f7ba02a7079fcdf7947430fb422fd9c2c42c1c4480cb48e47be
+adafruit-circuitpython-requests==4.1.6 \
+    --hash=sha256:4a7435ecf13924c1143b3204e0695cf17c91e18010741a29088892d73feaafb6 \
+    --hash=sha256:faf9b8ce563763844126aefbddb2a7e4ea57e2edfeae589779df7d209c7dcd84
 adafruit-circuitpython-typing==1.10.3 \
     --hash=sha256:4c5c1eeb3ae8a3d2dfa75129654c73690fbdb576d9069542a6ea3355467e1e74 \
     --hash=sha256:4e23d6828deafa4dfd554fd7d3f06b8ff8e2cc554b9c7aecba9d778d45970c18
