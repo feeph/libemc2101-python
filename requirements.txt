@@ -19,9 +19,9 @@ adafruit-circuitpython-requests==4.1.6 \
 adafruit-circuitpython-typing==1.10.3 \
     --hash=sha256:4c5c1eeb3ae8a3d2dfa75129654c73690fbdb576d9069542a6ea3355467e1e74 \
     --hash=sha256:4e23d6828deafa4dfd554fd7d3f06b8ff8e2cc554b9c7aecba9d778d45970c18
-adafruit-platformdetect==3.72.1 \
-    --hash=sha256:65a0aa5054a4a9a8f7e3d4eec9828815a4e1b02085b3c977975e41f697226fd5 \
-    --hash=sha256:a360ccb5fddfe60ce52304bb2d5a5345993df03997e33b7fd2dc65e51c39f02c
+Adafruit-PlatformDetect==3.73.0 \
+    --hash=sha256:2309098adc8ff87b3d9a4a5d3aeebe3f7b7f55ab0e13d19eb75ffa865f36fab8 \
+    --hash=sha256:5fc80192a154c29dc1e2819e9c435ea7f8af8fe01c328f35e4bfdabb9934a425
 adafruit-pureio==1.1.11 \
     --hash=sha256:281ab2099372cc0decc26326918996cbf21b8eed694ec4764d51eefa029d324e \
     --hash=sha256:c4cfbb365731942d1f1092a116f47dfdae0aef18c5b27f1072b5824ad5ea8c7c
