@@ -263,7 +263,7 @@ files = [
 
 [[package]]
 name = "feeph-i2c"
-version = "0.7.1"
+version = "0.7.3"
 requires_python = "<3.13,>=3.10"
 summary = "abstraction layer for the I²C bus (incl. simulation for testing)"
 groups = ["default"]
@@ -273,8 +273,8 @@ dependencies = [
     "gpiod~=2.2",
 ]
 files = [
-    {file = "feeph_i2c-0.7.1-py3-none-any.whl", hash = "sha256:a7d2d8bf785c18e8ce3205fc7a3533e6eeac1b563ad45dde7978c525499bd945"},
-    {file = "feeph_i2c-0.7.1.tar.gz", hash = "sha256:ee522bb4640f546da82c1948dd3c5a165af060104006022559afc861a8cd2a5b"},
+    {file = "feeph_i2c-0.7.3-py3-none-any.whl", hash = "sha256:f5cf7c7090861fe9cc6c385bb41e22f7fb97f5e6896c013ce4ab7115939246ef"},
+    {file = "feeph_i2c-0.7.3.tar.gz", hash = "sha256:5a1937c4fcc4a7820e64b4195077d8a36e99430382b0e5dc291ed79ac053e53c"},
 ]
 
 [[package]]
