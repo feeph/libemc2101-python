@@ -1,0 +1,36 @@
+---
+#
+# https://coveralls.io/
+#
+
+name: update coverage report (coveralls)
+
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+
+jobs:
+  coverage:
+    name: generate coverage report
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout repository
+        uses: actions/checkout@v4
+      - name: configure Python (using PDM)
+        uses: pdm-project/setup-pdm@v4
+        with:
+          python-version-file: pyproject.toml
+      - name: install dependencies
+        run: |
+          pdm install
+      - name: generate coverage report
+        run: |
+          pdm run coverage run --source=feeph.emc2101 -m pytest tests/
+          # coveralls recognizes the presence of .coverage but claims there
+          # is nothing to report; creating a report in lcov format fixes that
+          mkdir -p coverage
+          pdm run coverage-lcov --output_file_path=coverage/lcov.info
+      - name: coveralls action
+        uses: coverallsapp/github-action@v2

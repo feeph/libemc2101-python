@@ -5,7 +5,7 @@
 # files using the answers stored in this file.
 # (see https://copier.readthedocs.io/en/stable/updating/ for details)
 
-_commit: v0.2.0
+_commit: v0.3.2
 _src_path: https://github.com/feeph/pypackage-template
 author_email: 55798703+feeph@users.noreply.github.com
 author_name: Feeph Aifeimei

@@ -7,7 +7,7 @@
 name: verify pull request
 
 on:
-  push:
+  pull_request:
 
 # our tox configuration leverages pyenv to test on multiple Python versions.
 # It is unclear if we can leverage actions/setup-python@v4 to do the same.

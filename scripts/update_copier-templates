@@ -4,5 +4,5 @@
 #
 
 for answer_file in .copier/answers_*.yaml ; do
-    pdm run copier update -a $answer_file
+    pdm run copier update -a $answer_file --skip-answered
 done
