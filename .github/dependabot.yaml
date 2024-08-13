@@ -1,0 +1,27 @@
+---
+# enable dependabot's scanning but do not allow creation of pull requests
+# (please use 'scripts/update_dependencies' to update the dependencies)
+#
+# - dependabot does not understand PEP-621 repositories (pyproject.toml)
+# - dependabot expects the filename to end in '<...>requirements.txt' and
+#   ignores requirements-dev.txt ('dev-requirements.txt' would work but
+#   that's kinda stupid since the requirements files are no longer grouped
+#   by name -> we should optimize for humans instead of computers)
+# - renovate supports PEP-621 but it gets confused since we provide
+#   requirements.txt which makes it ignore pyproject.toml and pdm.lock
+#
+# --> provide our own mechanism to update requirements*.txt AND pdm.lock
+
+version: 2
+
+updates:
+  - package-ecosystem: pip
+    directory: "/"
+    schedule:
+      interval: daily
+      time: "13:00"
+    groups:
+      python-packages:
+        patterns:
+          - "*"
+    open-pull-requests-limit: 0

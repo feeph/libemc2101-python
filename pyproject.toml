@@ -34,7 +34,6 @@ dependencies = [
 ]
 readme = "README.md"
 license = {text = "GPL-3.0-or-later"}
-#homepage =
 repository = "https://github.com/feeph/libemc2101-python/"
 keywords = [
     "emc2101",
@@ -66,7 +65,7 @@ build-backend = "pdm.backend"
 profile           = "black"
 line_length       = 250
 multi_line_output = 7
-src_paths         = ["feeph", "tests"]
+src_paths         = ["feeph/", "tests/"]
 
 # https://pypi.org/project/autopep8/
 [tool.autopep8]
@@ -98,8 +97,10 @@ dev = [
 ]
 tools = [
     "autopep8     ~= 2.2",
+    "copier       ~= 9.3",
     "flake8       ~= 7.0",
     "mypy         ~= 1.10",
+    "pylint       ~= 3.2",
     "pytest-cov   ~= 5.0",
     "pytest-sugar ~= 1.0",
 ]
@@ -112,3 +113,8 @@ tools = [
 name = "testpypi"
 url = "https://test.pypi.org/simple/"
 include_packages = ["feeph-*"]
+
+[tool.pylint."MESSAGES CONTROL"]
+fail-under = 8
+max-line-length = 250
+disable = "no-else-return,use-list-literal"

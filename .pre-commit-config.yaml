@@ -3,19 +3,18 @@
 # documentation can be found at https://pre-commit.com/
 #
 # perform once after cloning the repository:
-#  pipx install pre-commit
-#  pre-commit install --allow-missing-config --hook-type pre-commit
-#  pre-commit install --allow-missing-config --hook-type commit-msg
-#  pre-commit install --allow-missing-config --hook-type post-commit
-#  pre-commit install --allow-missing-config --hook-type pre-push
+#  scripts/prepare_repository
 #
 # if you want to trigger pre-commit manually:
 #  pre-commit run
+#  pre-commit run --all-files
 #
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v2.3.0
     hooks:
+      - id: check-merge-conflict
+        args: [--assume-in-merge]
       - id: check-json
       - id: check-toml
       - id: check-yaml

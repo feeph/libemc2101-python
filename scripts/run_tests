@@ -1,0 +1,28 @@
+#!/bin/bash
+#
+# run various tests to validate the code
+#
+
+set -e
+set -u
+
+# code quality
+pdm run flake8 feeph/ examples/ tests/
+
+# code style
+# (pylint is configured to accept "less than perfect")
+pdm run pylint feeph/ examples/ tests/
+
+# validate type hints (package)
+pdm run mypy -p feeph.emc2101
+
+# validate type hints (extra files)
+# (we need to be careful since there might be no files)
+FILES=`find examples/ tests/ -name '*.py'`
+if [[ -n $FILES ]] ; then
+    pdm run mypy $FILES
+fi
+
+echo "----------------------------------------------------------------------"
+echo "If you reached this far you passed. Congratulations!"
+echo "----------------------------------------------------------------------"

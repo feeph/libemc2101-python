@@ -1,0 +1,21 @@
+#!/bin/bash
+#
+# this script should be run after cloning the repository
+# (it is safe to re-run this script)
+#
+
+if [ -d .git ] ; then
+    echo "-- initialize git hooks --"
+    for hook_type in pre-commit commit-msg post-commit pre-push ; do
+        pre-commit install --allow-missing-config --hook-type $hook_type
+    done
+    pre-commit validate-config
+fi
+
+if [ -f pyproject.toml ] ; then
+    echo "-- initialize PDM and install dependencies --"
+    if [ ! -f pdm.lock ] ; then
+        pdm lock
+    fi
+    pdm install
+fi
