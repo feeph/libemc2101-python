@@ -1,0 +1,21 @@
+---
+# Changes here will be overwritten by Copier; NEVER EDIT MANUALLY
+#
+# You can use `pdm run copier update --defaults` to update the template
+# files using the answers stored in this file.
+# (see https://copier.readthedocs.io/en/stable/updating/ for details)
+
+_commit: v0.2.0
+_src_path: https://github.com/feeph/pypackage-template
+author_email: 55798703+feeph@users.noreply.github.com
+author_name: Feeph Aifeimei
+default_branch: master
+is_typed: true
+issuetracker_url: https://github.com/feeph/libemc2101-python/issues
+max_line_length: 250
+package_description: library for I²C-based EMC2101 PWM fan controller
+package_name: emc2101
+package_namespace: feeph
+python_constraint: '>=3.10,<3.13'
+repository_name: libemc2101-python
+repository_url: https://github.com/feeph/libemc2101-python/

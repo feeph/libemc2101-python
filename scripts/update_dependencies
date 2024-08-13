@@ -1,0 +1,44 @@
+#!/bin/bash
+#
+# update Python dependencies using PDM
+# (requires `gh auth login`)
+#
+
+set -e
+set -u
+
+branch_name="fb-update-dependencies_`date +'%s'`"
+
+git stash save
+current_branch=`git branch --show-current`
+git checkout master
+git pull
+git checkout -b $branch_name
+pdm update --update-all
+git add --update
+git commit -m "chore: update dependencies (pdm update --update-all)"
+git push --set-upstream origin $branch_name
+git checkout $current_branch
+
+# restore original state
+git checkout $current_branch
+if git stash show ; then
+    git stash pop
+fi
+
+# if present: use GitHub CLI tools to create a pull request
+if command -v gh >/dev/null ; then
+    # I'm sorry but this is the best I could come up with to test if there
+    # is a label "dependencies".
+    #  - 'gh label list' limits its output to 30 tags
+    #  - '--search' will find close matches (e.g. typos) and is not reliable
+    #  - --jq='.[] | select(.name=="...")' does not indicate if there was no
+    #    result ('...|jq -e' would, but that would require jq to be installed)
+    if ! gh label list --search="dep" --json='name' --jq='.[]["name"]'|grep -q "^dependencies$" ; then
+        gh label create dependencies --color="#0366d6" --description="update dependency files (pdm.lock & requirements*.txt)"
+    fi
+    gh pr create --assignee="@me" --base=master --head=$branch_name --fill --label="dependencies"
+else
+    echo "GitHub CLI tools not found. Unable to create a pull request."
+    echo "-> https://github.com/cli/cli"
+fi

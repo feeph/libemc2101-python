@@ -6,7 +6,7 @@
 # repository and assigned a permission level first. Otherwise they will
 # be underlined with red squiggly lines when looking at the file in the
 # WebGUI and it won't work.
-#  -> https://github.com/feeph/libemc2101-python/settings/access
+# (GitHub -> Repository -> Settings -> Collaborators)
 #
 
 # define default ownership
