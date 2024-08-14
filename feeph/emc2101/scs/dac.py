@@ -1,6 +1,4 @@
 #!/usr/bin/env python3
-"""
-"""
 
 from feeph.emc2101.scs.base_class import SpeedControlSetter
 
@@ -14,24 +12,24 @@ class DAC(SpeedControlSetter):
         # TODO derive mapping from fan config
         self._steps = {
             # fmt: off
-            #     RPM    %
-            3:  ( 409,  34),  # noqa: 201
-            4:  ( 479,  40),  # noqa: 201
-            5:  ( 526,  44),  # noqa: 201
-            6:  ( 591,  49),  # noqa: 201
-            7:  ( 629,  52),  # noqa: 201
-            8:  ( 697,  58),  # noqa: 201
-            9:  ( 785,  65),  # noqa: 201
-            10: ( 868,  72),  # noqa: 201
-            11: ( 950,  79),  # noqa: 201
-            12: (1040,  87),
-            13: (1113,  93),
-            14: (1194, 100),
+            #     %  RPM
+            3:  ( 34,  409),  # noqa: 201
+            4:  ( 40,  479),  # noqa: 201
+            5:  ( 44,  526),  # noqa: 201
+            6:  ( 49,  591),  # noqa: 201
+            7:  ( 52,  629),  # noqa: 201
+            8:  ( 58,  697),  # noqa: 201
+            9:  ( 65,  785),  # noqa: 201
+            10: ( 72,  868),  # noqa: 201
+            11: ( 79,  950),  # noqa: 201
+            12: ( 87, 1040),  # noqa: 201
+            13: ( 93, 1113),  # noqa: 201
+            14: (100, 1194),
             # fmt: on
         }
 
     def is_valid_step(self, value: int) -> bool:
-        return value in self._steps.keys()
+        return value in self._steps
 
     def get_steps(self) -> list[int]:
         """
@@ -45,7 +43,7 @@ class DAC(SpeedControlSetter):
         """
         step_cur = None
         deviation_cur = None
-        for step_new, (_, percent_step) in self._steps.items():
+        for step_new, (percent_step, _) in self._steps.items():
             if percent_step == 0:
                 percent_step = 1
             deviation_new = abs(1 - percent / percent_step)
@@ -55,7 +53,7 @@ class DAC(SpeedControlSetter):
         return step_cur
 
     def convert_step2percent(self, step: int) -> int:
-        return self._steps[step][1]
+        return self._steps[step][0]
 
     def convert_rpm2step(self, rpm: int) -> int | None:
         """
@@ -63,7 +61,7 @@ class DAC(SpeedControlSetter):
         """
         step_cur = None
         deviation_cur = None
-        for step_new, (rpm_step, _) in self._steps.items():
+        for step_new, (_, rpm_step) in self._steps.items():
             if rpm_step == 0:
                 rpm_step = 1
             deviation_new = abs(1 - rpm / rpm_step)
@@ -73,7 +71,7 @@ class DAC(SpeedControlSetter):
         return step_cur
 
     def convert_step2rpm(self, step: int) -> int | None:
-        return self._steps[step][0]
+        return self._steps[step][1]
 
 
 def _convert_percentage2step(value: int) -> int:
@@ -88,13 +86,16 @@ def _convert_percentage2step(value: int) -> int:
         raise ValueError("Percentage value must be in range 0 ≤ x ≤ 100!")
 
 
-def _convert_step2percentage(value: int) -> int:
-    """
-    convert the provided value from the internal value to percentage
-    used by EMC2101 (0x00 -> 0%, 0x3F -> 100%)
-    """
-    # 0x3F = 63
-    if 0 <= value <= 63:
-        return round(value * 100 / 63)
-    else:
-        raise ValueError("Raw value must be in range 0 ≤ x ≤ 63!")
+# TODO decide what to do with this block
+# -------------------------------------------------------------------------
+# def _convert_step2percentage(value: int) -> int:
+#     """
+#     convert the provided value from the internal value to percentage
+#     used by EMC2101 (0x00 -> 0%, 0x3F -> 100%)
+#     """
+#     # 0x3F = 63
+#     if 0 <= value <= 63:
+#         return round(value * 100 / 63)
+#     else:
+#         raise ValueError("Raw value must be in range 0 ≤ x ≤ 63!")
+# -------------------------------------------------------------------------

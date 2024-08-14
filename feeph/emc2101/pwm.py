@@ -1,13 +1,10 @@
 #!/usr/bin/env python3
-"""
-"""
 
 # a reimplementation of https://github.com/adafruit/Adafruit_CircuitPython_EMC2101
 # Datasheet: https://ww1.microchip.com/downloads/en/DeviceDoc/2101.pdf
 
 import logging
 from enum import Enum
-from typing import Any
 
 # module busio provides no type hints
 import busio  # type: ignore
@@ -152,7 +149,7 @@ class Emc2101_PWM:
             LH.warning("Pin 6 is in alert mode. Can't configure spinup behavior.")
             return False
         else:
-            raise NotImplementedError("unsupported pin 6 mode")
+            raise RuntimeError('internal error - inconsistent state')
 
     def get_rpm(self) -> int | None:
         return self._emc2101.get_rpm()
@@ -219,6 +216,7 @@ class Emc2101_PWM:
     def is_lookup_table_enabled(self) -> bool:
         return self._emc2101.is_lookup_table_enabled()
 
+    # TODO unit should be checked before entering the loop
     def update_lookup_table(self, values: dict[int, int], unit: FanSpeedUnit = FanSpeedUnit.PERCENT) -> bool:
         """
         populate the lookup table with the provided values and
@@ -295,6 +293,8 @@ class Emc2101_PWM:
         the datasheet guarantees a precision of +/- 1°C
         """
         return self._emc2101.get_sensor_temperature()
+
+    # TODO redesign the sensor temperature limit related functions. The interface is weird.
 
     def get_sensor_temperature_limit(self, limit_type: TemperatureLimitType) -> float:
         """
@@ -375,22 +375,3 @@ class Emc2101_PWM:
         dif = ets_config.diode_ideality_factor
         bcf = ets_config.beta_compensation_factor
         self._emc2101.configure_external_temperature_sensor(dif=dif, bcf=bcf)
-
-
-def parse_fanconfig_register(value: int) -> dict[str, Any]:
-    # 0b00000000
-    #         ^^-- tachometer input mode
-    #        ^---- clock frequency override
-    #       ^----- clock select
-    #      ^------ polarity (0 = 100->0, 1 = 0->100)
-    #     ^------- configure lookup table (0 = on, 1 = off)
-    config = {
-        "tachometer input mode":    value & 0b0000_0011,
-        "clock frequency override":     'use frequency divider' if value & 0b0000_0100 else 'use clock select',
-        "clock select base frequency":  '1.4kHz' if value & 0b0000_1000 else '360kHz',
-        "polarity":                     '0x00 = 100%, 0xFF = 0%' if value & 0b0001_0000 else '0x00 = 0%, 0xFF = 100%',
-        "configure lookup table":       'allow dutycycle update' if value & 0b0010_0000 else 'disable dutycycle update',
-        "external temperature setting": 'override external temperature' if value & 0b0100_0000 else 'measure external temperature',
-        # the highest bit is unused
-    }
-    return config
