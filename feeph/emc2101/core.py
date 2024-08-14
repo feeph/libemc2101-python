@@ -169,29 +169,29 @@ class Emc2101_core:
     # ---------------------------------------------------------------------
 
     def configure_pin_six_as_alert(self) -> bool:
-        # set 0x03.2 to 0
-        with BurstHandler(i2c_bus=self._i2c_bus, i2c_adr=self._i2c_adr) as bh:
-            cfg_register_value = bh.read_register(0x03)
-            if cfg_register_value is not None:
+        try:
+            # set 0x03.2 to 0
+            with BurstHandler(i2c_bus=self._i2c_bus, i2c_adr=self._i2c_adr) as bh:
+                cfg_register_value = bh.read_register(0x03)
                 bh.write_register(0x03, cfg_register_value & 0b1111_1011)
                 # clear spin up behavior settings
                 # (spin up is unavailable when pin 6 is in alert mode),
                 bh.write_register(0x4B, 0b0000_0000)
                 return True
-            else:
-                LH.error("Unable to read config register!")
-                return False
+        except RuntimeError:
+            LH.error("Unable to read config register!")
+            return False
 
     def configure_pin_six_as_tacho(self) -> bool:
-        # set 0x03.2 to 1
-        with BurstHandler(i2c_bus=self._i2c_bus, i2c_adr=self._i2c_adr) as bh:
-            cfg_register_value = bh.read_register(0x03)
-            if cfg_register_value is not None:
+        try:
+            # set 0x03.2 to 1
+            with BurstHandler(i2c_bus=self._i2c_bus, i2c_adr=self._i2c_adr) as bh:
+                cfg_register_value = bh.read_register(0x03)
                 bh.write_register(0x03, cfg_register_value | 0b0000_0100)
                 return True
-            else:
-                LH.error("Unable to read config register!")
-                return False
+        except RuntimeError:
+            LH.error("Unable to read config register!")
+            return False
 
     def configure_dac_control(self, step_max: int):
         # enable DAC control (set 0x03.4 to 1)

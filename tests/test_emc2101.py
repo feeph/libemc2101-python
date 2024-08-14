@@ -24,6 +24,7 @@ else:
     HAS_HARDWARE = False
 
 
+# pylint: disable=protected-access
 class TestEmc2101(unittest.TestCase):
 
     def setUp(self):
@@ -68,6 +69,15 @@ class TestEmc2101(unittest.TestCase):
             self.assertEqual(bh.read_register(0x03), 0b0000_0000)
             self.assertEqual(bh.read_register(0x4B), 0b0000_0000)
 
+    @unittest.skipIf(HAS_HARDWARE, "Skipping forced failure test.")
+    def test_pin_six_as_alert_failure(self):
+        self.i2c_bus._lock_chance = 0
+        # -----------------------------------------------------------------
+        computed = self.emc2101.configure_pin_six_as_alert()
+        expected = False
+        # -----------------------------------------------------------------
+        self.assertEqual(computed, expected)
+
     def test_pin_six_as_tacho(self):
         # -----------------------------------------------------------------
         computed = self.emc2101.configure_pin_six_as_tacho()
@@ -77,3 +87,20 @@ class TestEmc2101(unittest.TestCase):
         with BurstHandler(i2c_bus=self.i2c_bus, i2c_adr=self.i2c_adr) as bh:
             self.assertEqual(bh.read_register(0x03), 0b0000_0100)
             self.assertEqual(bh.read_register(0x4B), 0b0011_1111)
+
+    @unittest.skipIf(HAS_HARDWARE, "Skipping forced failure test.")
+    def test_pin_six_as_tacho_failure(self):
+        self.i2c_bus._lock_chance = 0
+        # -----------------------------------------------------------------
+        computed = self.emc2101.configure_pin_six_as_tacho()
+        expected = False
+        # -----------------------------------------------------------------
+        self.assertEqual(computed, expected)
+
+    def test_pin_get_rpm_in_alert_mode(self):
+        self.emc2101.configure_pin_six_as_alert()
+        # -----------------------------------------------------------------
+        computed = self.emc2101.get_rpm()
+        expected = None
+        # -----------------------------------------------------------------
+        self.assertEqual(computed, expected)
