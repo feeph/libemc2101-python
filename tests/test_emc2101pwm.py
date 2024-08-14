@@ -257,14 +257,14 @@ class TestEmc2101PWM(unittest.TestCase):
             bh.write_register(0x08, 0x12)         # external sensor low limit (decimal)
             bh.write_register(0x14, 0b1110_0000)  # external sensor low limit (fraction)
         # -----------------------------------------------------------------
-        computed = self.emc2101.get_sensor_temperature_limit(limit_type=sut.TemperatureLimitType.TO_COLD)
+        computed = self.emc2101.get_sensor_temperature_limit(limit_type=sut.TemperatureLimitType.TOO_COLD)
         expected = 18.9
         # -----------------------------------------------------------------
         self.assertEqual(computed, expected, f"Got unexpected sensor temperature limit '{computed}'.")
 
     def test_sensor_temperature_limit_write_lower(self):
         # -----------------------------------------------------------------
-        computed = self.emc2101.set_sensor_temperature_limit(5.91, limit_type=sut.TemperatureLimitType.TO_COLD)
+        computed = self.emc2101.set_sensor_temperature_limit(5.91, limit_type=sut.TemperatureLimitType.TOO_COLD)
         expected = 5.9
         # -----------------------------------------------------------------
         self.assertEqual(computed, expected, f"Got unexpected sensor temperature limit '{computed}'.")
@@ -277,14 +277,14 @@ class TestEmc2101PWM(unittest.TestCase):
             bh.write_register(0x07, 0x54)         # external sensor low limit (decimal)
             bh.write_register(0x13, 0b1110_0000)  # external sensor low limit (fraction)
         # -----------------------------------------------------------------
-        computed = self.emc2101.get_sensor_temperature_limit(limit_type=sut.TemperatureLimitType.TO_HOT)
+        computed = self.emc2101.get_sensor_temperature_limit(limit_type=sut.TemperatureLimitType.TOO_HOT)
         expected = 84.9
         # -----------------------------------------------------------------
         self.assertEqual(computed, expected, f"Got unexpected sensor temperature limit '{computed}'.")
 
     def test_sensor_temperature_limit_write_upper(self):
         # -----------------------------------------------------------------
-        computed = self.emc2101.set_sensor_temperature_limit(84.91, limit_type=sut.TemperatureLimitType.TO_HOT)
+        computed = self.emc2101.set_sensor_temperature_limit(84.91, limit_type=sut.TemperatureLimitType.TOO_HOT)
         expected = 84.9
         # -----------------------------------------------------------------
         self.assertEqual(computed, expected, f"Got unexpected sensor temperature limit '{computed}'.")

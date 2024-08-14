@@ -68,8 +68,8 @@ ets_2n3906 = ExternalTemperatureSensorConfig(ideality_factor=0x12, beta_factor=0
 
 
 class TemperatureLimitType(Enum):
-    TO_COLD = 1
-    TO_HOT  = 2
+    TOO_COLD = 1
+    TOO_HOT  = 2
 
 
 # TODO add convenience function to refresh state
@@ -300,9 +300,9 @@ class Emc2101_PWM:
         """
         get upper/lower temperature alerting limit in °C
         """
-        if limit_type == TemperatureLimitType.TO_COLD:
+        if limit_type == TemperatureLimitType.TOO_COLD:
             return self._emc2101.get_sensor_low_temperature_limit()
-        elif limit_type == TemperatureLimitType.TO_HOT:
+        elif limit_type == TemperatureLimitType.TOO_HOT:
             return self._emc2101.get_sensor_high_temperature_limit()
         else:
             raise ValueError("invalid limit type")
@@ -314,9 +314,9 @@ class Emc2101_PWM:
         The fractional part has limited precision and will be clamped to the
         nearest available step. The clamped value is returned to the caller.
         """
-        if limit_type == TemperatureLimitType.TO_COLD:
+        if limit_type == TemperatureLimitType.TOO_COLD:
             return self._emc2101.set_sensor_low_temperature_limit(value=value)
-        elif limit_type == TemperatureLimitType.TO_HOT:
+        elif limit_type == TemperatureLimitType.TOO_HOT:
             return self._emc2101.set_sensor_high_temperature_limit(value=value)
         else:
             raise ValueError("invalid limit type")
