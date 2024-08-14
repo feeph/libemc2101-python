@@ -1,12 +1,5 @@
 #!/usr/bin/env python3
-"""
-perform PWM related tests
-
-use simulated device:
-  pdm run pytest
-use hardware device:
-  TEST_EMC2101_CHIP=y pdm run pytest
-"""
+# pylint: disable=missing-class-docstring,missing-function-docstring,missing-module-docstring
 
 import os
 import unittest

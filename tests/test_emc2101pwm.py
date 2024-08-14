@@ -7,6 +7,7 @@ use simulated device:
 use hardware device:
   TEST_EMC2101_CHIP=y pdm run pytest
 """
+# pylint: disable=missing-class-docstring,missing-function-docstring
 
 import math
 import os
@@ -26,6 +27,7 @@ else:
     HAS_HARDWARE = False
 
 
+# pylint: disable=too-many-public-methods,protected-access
 class TestEmc2101PWM(unittest.TestCase):
 
     def setUp(self):
@@ -76,6 +78,32 @@ class TestEmc2101PWM(unittest.TestCase):
         pass
 
     # ---------------------------------------------------------------------
+    # initialization
+    # ---------------------------------------------------------------------
+
+    def test_configure_pin6_invalid(self):
+        device_config = sut.DeviceConfig(rpm_control_mode=sut.RpmControlMode.PWM, pin_six_mode=None)
+        # -----------------------------------------------------------------
+        # -----------------------------------------------------------------
+        self.assertRaises(NotImplementedError, sut.Emc2101_PWM, i2c_bus=self.i2c_bus, device_config=device_config, fan_config=self.fan_config)
+
+    def test_configure_control_mode_mismatch(self):
+        # fan device and controller must both agree on how to control the
+        # fan's speed
+        fan_config = sut.FanConfig(model="Mockinator 2000", pwm_frequency=22500, rpm_control_mode=sut.RpmControlMode.VOLTAGE, minimum_duty_cycle=20, maximum_duty_cycle=100, minimum_rpm=100, maximum_rpm=2000, steps={})
+        device_config = sut.DeviceConfig(rpm_control_mode=sut.RpmControlMode.PWM, pin_six_mode=sut.PinSixMode.TACHO)
+        # -----------------------------------------------------------------
+        # -----------------------------------------------------------------
+        self.assertRaises(ValueError, sut.Emc2101_PWM, i2c_bus=self.i2c_bus, device_config=device_config, fan_config=fan_config)
+
+    def test_configure_control_mode_unknown(self):
+        fan_config = sut.FanConfig(model="Mockinator 2000", pwm_frequency=22500, rpm_control_mode=None, minimum_duty_cycle=20, maximum_duty_cycle=100, minimum_rpm=100, maximum_rpm=2000, steps={})
+        device_config = sut.DeviceConfig(rpm_control_mode=sut.RpmControlMode.PWM, pin_six_mode=sut.PinSixMode.TACHO)
+        # -----------------------------------------------------------------
+        # -----------------------------------------------------------------
+        self.assertRaises(ValueError, sut.Emc2101_PWM, i2c_bus=self.i2c_bus, device_config=device_config, fan_config=fan_config)
+
+    # ---------------------------------------------------------------------
     # hardware details
     # ---------------------------------------------------------------------
 
@@ -124,10 +152,53 @@ class TestEmc2101PWM(unittest.TestCase):
         spinup_strength = sut.SpinUpStrength.STRENGTH_50  # 0b...0_1...
         fast_mode = True                                  # 0b..1._....
         # -----------------------------------------------------------------
-        self.emc2101.configure_spinup_behaviour(spinup_strength=spinup_strength, spinup_duration=spinup_duration, fast_mode=fast_mode)
+        computed = self.emc2101.configure_spinup_behaviour(spinup_strength=spinup_strength, spinup_duration=spinup_duration, fast_mode=fast_mode)
+        expected = True
         # -----------------------------------------------------------------
+        self.assertEqual(computed, expected)
         with BurstHandler(i2c_bus=self.i2c_bus, i2c_adr=self.i2c_adr) as bh:
             self.assertEqual(bh.read_register(0x4B), 0b0010_1101)
+
+    def test_configure_spinup_behaviour_alert(self):
+        # unable to configure spinup mode if the device is pin 6 is used as
+        # an alert pin (pin must be in tacho mode or we can't measure speed)
+        device_config = sut.DeviceConfig(rpm_control_mode=sut.RpmControlMode.PWM, pin_six_mode=sut.PinSixMode.ALERT)
+        emc2101_alert = sut.Emc2101_PWM(i2c_bus=self.i2c_bus, device_config=device_config, fan_config=self.fan_config)
+        spinup_duration = sut.SpinUpDuration.TIME_0_80    # 0b...._.101
+        spinup_strength = sut.SpinUpStrength.STRENGTH_50  # 0b...0_1...
+        fast_mode = True                                  # 0b..1._....
+        # -----------------------------------------------------------------
+        computed = emc2101_alert.configure_spinup_behaviour(spinup_strength=spinup_strength, spinup_duration=spinup_duration, fast_mode=fast_mode)
+        expected = False
+        # -----------------------------------------------------------------
+        self.assertEqual(computed, expected)
+
+    def test_configure_spinup_behaviour_invalid(self):
+        self.emc2101._pin_six_mode = None  # force an invalid state
+        # -----------------------------------------------------------------
+        # -----------------------------------------------------------------
+        self.assertRaises(RuntimeError, self.emc2101.configure_spinup_behaviour, spinup_strength=0, spinup_duration=0, fast_mode=True)
+
+    # result of this test on hardware is unpredictable
+    @unittest.skipIf(HAS_HARDWARE, "Skipping RPM test.")
+    def test_get_rpm(self):
+        # -----------------------------------------------------------------
+        computed = self.emc2101.get_rpm()
+        expected = None
+        # -----------------------------------------------------------------
+        self.assertEqual(computed, expected)
+
+    def test_get_fixed_speed(self):
+        # -----------------------------------------------------------------
+        computed = self.emc2101.get_fixed_speed(unit=sut.FanSpeedUnit.STEP)
+        expected = 0
+        # -----------------------------------------------------------------
+        self.assertEqual(computed, expected)
+
+    def test_set_fixed_speed_invalid(self):
+        # -----------------------------------------------------------------
+        # -----------------------------------------------------------------
+        self.assertRaises(ValueError, self.emc2101.set_fixed_speed, value=0, unit=None)
 
     # control duty cycle using manual control
 
@@ -252,6 +323,15 @@ class TestEmc2101PWM(unittest.TestCase):
         # -----------------------------------------------------------------
         self.assertEqual(computed, expected, f"Got unexpected chip temperature limit '{computed}'.")
 
+    def test_chip_temperature_limit_write(self):
+        self.emc2101.set_chip_temperature_limit(56)
+        # -----------------------------------------------------------------
+        with BurstHandler(i2c_bus=self.i2c_bus, i2c_adr=self.i2c_adr) as bh:
+            computed = bh.read_register(0x05)
+        expected = 56
+        # -----------------------------------------------------------------
+        self.assertEqual(computed, expected)
+
     def test_sensor_temperature_limit_read_lower(self):
         with BurstHandler(i2c_bus=self.i2c_bus, i2c_adr=self.i2c_adr) as bh:
             bh.write_register(0x08, 0x12)         # external sensor low limit (decimal)
@@ -291,6 +371,16 @@ class TestEmc2101PWM(unittest.TestCase):
         with BurstHandler(i2c_bus=self.i2c_bus, i2c_adr=self.i2c_adr) as bh:
             self.assertEqual(bh.read_register(0x07), 0x54)
             self.assertEqual(bh.read_register(0x13), 0b1110_0000)
+
+    def test_sensor_temperature_limit_read_invalid_limit(self):
+        # -----------------------------------------------------------------
+        # -----------------------------------------------------------------
+        self.assertRaises(ValueError, self.emc2101.get_sensor_temperature_limit, limit_type='a')
+
+    def test_sensor_temperature_limit_write_invalid_limit(self):
+        # -----------------------------------------------------------------
+        # -----------------------------------------------------------------
+        self.assertRaises(ValueError, self.emc2101.set_sensor_temperature_limit, 5.91, limit_type='a')
 
     # ---------------------------------------------------------------------
     # temperature measurements (external sensor)
@@ -370,6 +460,25 @@ class TestEmc2101PWM(unittest.TestCase):
             self.assertLess(computed, 127.0, f"Got unexpected sensor temperature '{computed}'.")
         else:
             self.assertTrue(math.isnan(computed))
+
+    @unittest.skipIf(HAS_HARDWARE, "Skipping forced failure test.")
+    def test_sensor_state_invalid(self):
+        with BurstHandler(i2c_bus=self.i2c_bus, i2c_adr=self.i2c_adr) as bh:
+            bh.write_register(0x01, 0b0111_1111)
+            bh.write_register(0x10, 0b1110_0100)
+        # -----------------------------------------------------------------
+        # -----------------------------------------------------------------
+        self.assertRaises(RuntimeError, self.emc2101.get_external_sensor_state)
+
+    @unittest.skipIf(HAS_HARDWARE, "Skipping forced failure test.")
+    def test_sensor_temperature_invalid(self):
+        with BurstHandler(i2c_bus=self.i2c_bus, i2c_adr=self.i2c_adr) as bh:
+            bh.write_register(0x01, 0b0111_1111)
+            bh.write_register(0x10, 0b1110_0000)
+        # -----------------------------------------------------------------
+        computed = self.emc2101.get_sensor_temperature()
+        # -----------------------------------------------------------------
+        self.assertTrue(math.isnan(computed))
 
     # ---------------------------------------------------------------------
     # control fan speed (lookup table)
@@ -544,6 +653,80 @@ class TestEmc2101PWM(unittest.TestCase):
         # -----------------------------------------------------------------
         self.assertRaises(ValueError, self.emc2101.update_lookup_table, values=values, unit=sut.FanSpeedUnit.STEP)
 
+    def test_update_lookup_table_percent(self):
+        values = {
+            16: 20,  # temp+speed #1
+            40: 60,  # temp+speed #2
+            72: 90,  # temp+speed #3
+        }
+        # -----------------------------------------------------------------
+        computed = self.emc2101.update_lookup_table(values=values, unit=sut.FanSpeedUnit.PERCENT)
+        expected = True
+        # -----------------------------------------------------------------
+        self.assertEqual(computed, expected)  # update was performed
+        with BurstHandler(i2c_bus=self.i2c_bus, i2c_adr=self.i2c_adr) as bh:
+            self.assertEqual(bh.read_register(0x50), 16)
+            self.assertEqual(bh.read_register(0x51), 0x03)
+            self.assertEqual(bh.read_register(0x52), 40)
+            self.assertEqual(bh.read_register(0x53), 0x08)
+            self.assertEqual(bh.read_register(0x54), 72)
+            self.assertEqual(bh.read_register(0x55), 0x0D)
+
+    # TODO properly validate the percentage range and perform suitable action
+    def test_update_lookup_table_percent_too_low(self):
+        values = {
+            16: -1,
+        }
+        # -----------------------------------------------------------------
+        computed = self.emc2101.update_lookup_table(values=values, unit=sut.FanSpeedUnit.PERCENT)
+        expected = True
+        # -----------------------------------------------------------------
+        self.assertEqual(computed, expected)  # update was performed
+        with BurstHandler(i2c_bus=self.i2c_bus, i2c_adr=self.i2c_adr) as bh:
+            self.assertEqual(bh.read_register(0x50), 16)
+            self.assertEqual(bh.read_register(0x51), 0x0E)
+
+    # TODO properly validate the percentage range and perform suitable action
+    def test_update_lookup_table_percent_too_high(self):
+        values = {
+            16: 101,
+        }
+        # -----------------------------------------------------------------
+        computed = self.emc2101.update_lookup_table(values=values, unit=sut.FanSpeedUnit.PERCENT)
+        expected = True
+        # -----------------------------------------------------------------
+        self.assertEqual(computed, expected)  # update was performed
+        with BurstHandler(i2c_bus=self.i2c_bus, i2c_adr=self.i2c_adr) as bh:
+            self.assertEqual(bh.read_register(0x50), 16)
+            self.assertEqual(bh.read_register(0x51), 0x0E)
+
+    def test_update_lookup_table_rpm(self):
+        values = {
+            16: 700,  # temp+speed #1
+            40: 800,  # temp+speed #2
+            72: 900,  # temp+speed #3
+        }
+        # -----------------------------------------------------------------
+        computed = self.emc2101.update_lookup_table(values=values, unit=sut.FanSpeedUnit.RPM)
+        expected = True
+        # -----------------------------------------------------------------
+        self.assertEqual(computed, expected)  # update was performed
+        with BurstHandler(i2c_bus=self.i2c_bus, i2c_adr=self.i2c_adr) as bh:
+            self.assertEqual(bh.read_register(0x50), 16)
+            self.assertEqual(bh.read_register(0x51), 0x08)
+            self.assertEqual(bh.read_register(0x52), 40)
+            self.assertEqual(bh.read_register(0x53), 0x09)
+            self.assertEqual(bh.read_register(0x54), 72)
+            self.assertEqual(bh.read_register(0x55), 0x0A)
+
+    def test_update_lookup_table_invalid_unit(self):
+        values = {
+            16: -65,  # min temp is -64
+        }
+        # -----------------------------------------------------------------
+        # -----------------------------------------------------------------
+        self.assertRaises(ValueError, self.emc2101.update_lookup_table, values=values, unit=None)
+
     def test_reset_lookup(self):
         with BurstHandler(i2c_bus=self.i2c_bus, i2c_adr=self.i2c_adr) as bh:
             # initialize status register
@@ -563,3 +746,40 @@ class TestEmc2101PWM(unittest.TestCase):
         with BurstHandler(i2c_bus=self.i2c_bus, i2c_adr=self.i2c_adr) as bh:
             for offset in range(0, 16):
                 self.assertEqual(bh.read_register(0x50 + offset), 0x00)
+
+    # ---------------------------------------------------------------------
+    # convenience functions
+    # ---------------------------------------------------------------------
+
+    def test_read_fancfg_register(self):
+        # -----------------------------------------------------------------
+        computed = self.emc2101.read_fancfg_register()
+        expected = 0b0010_0000
+        # -----------------------------------------------------------------
+        self.assertEqual(computed, expected)
+
+    def test_write_fancfg_register(self):
+        self.emc2101.write_fancfg_register(0b0110_0000)
+        # -----------------------------------------------------------------
+        computed = self.emc2101.read_fancfg_register()
+        expected = 0b0110_0000
+        # -----------------------------------------------------------------
+        self.assertEqual(computed, expected)
+
+    def test_read_device_registers(self):
+        # this test is sloppy and only compares if we get the right keys, it
+        # does not check if the values are correct (could be random junk)
+        # -----------------------------------------------------------------
+        computed = self.emc2101.read_device_registers().keys()
+        expected = feeph.emc2101.core.DEFAULTS.keys()
+        # -----------------------------------------------------------------
+        self.assertEqual(computed, expected)
+
+    def test_configure_external_temperature_sensor(self):
+        etsc = sut.ExternalTemperatureSensorConfig(ideality_factor=0x11, beta_factor=0x07)
+        self.emc2101.configure_external_temperature_sensor(ets_config=etsc)
+        # -----------------------------------------------------------------
+        # -----------------------------------------------------------------
+        with BurstHandler(i2c_bus=self.i2c_bus, i2c_adr=self.i2c_adr) as bh:
+            self.assertEqual(bh.read_register(0x17), 0x11)
+            self.assertEqual(bh.read_register(0x18), 0x07)

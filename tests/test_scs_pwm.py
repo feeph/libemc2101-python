@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
-"""
-<enter description>
-"""
+# pylint: disable=missing-class-docstring,missing-function-docstring,missing-module-docstring
 
 import unittest
 
+import feeph.emc2101.scs.pwm as sut
 from feeph.emc2101.fan_configs import FanConfig, RpmControlMode
-from feeph.emc2101.scs.pwm import PWM, calculate_pwm_factors
 
 
+# pylint: disable=protected-access
 class TestScsPwm(unittest.TestCase):
 
     def setUp(self):
@@ -30,9 +29,28 @@ class TestScsPwm(unittest.TestCase):
             # fmt: on
         }
         self.fan_config = FanConfig(model="fan", rpm_control_mode=RpmControlMode.PWM, pwm_frequency=22500, minimum_duty_cycle=0, maximum_duty_cycle=100, minimum_rpm=100, maximum_rpm=2000, steps=self.steps)
+        self.pwm = sut.PWM(fan_config=self.fan_config)
+
+    # ---------------------------------------------------------------------
+
+    def test_init_no_dutycycle(self):
+        fan_config = FanConfig(model="fan", rpm_control_mode=RpmControlMode.PWM, pwm_frequency=22500, minimum_duty_cycle=None, maximum_duty_cycle=None, minimum_rpm=100, maximum_rpm=2000, steps=self.steps)
+        # -----------------------------------------------------------------
+        # -----------------------------------------------------------------
+        self.assertRaises(ValueError, sut.PWM, fan_config=fan_config)
+
+    def test_init_no_steps(self):
+        fan_config = FanConfig(model="fan", rpm_control_mode=RpmControlMode.PWM, pwm_frequency=22500, minimum_duty_cycle=0, maximum_duty_cycle=100, minimum_rpm=100, maximum_rpm=2000, steps={})
+        pwm = sut.PWM(fan_config=fan_config)
+        # -----------------------------------------------------------------
+        computed = pwm.get_steps()
+        expected = list()
+        # -----------------------------------------------------------------
+        self.assertEqual(computed, expected)
+
+    # ---------------------------------------------------------------------
 
     def test_valid_steps(self):
-        pwm = PWM(fan_config=self.fan_config)
         values = {
             0x00: False,
             0x01: False,
@@ -52,34 +70,32 @@ class TestScsPwm(unittest.TestCase):
             0x0F: False,
         }
         for pwm_step, is_valid in values.items():
-            computed = pwm.is_valid_step(pwm_step)
+            computed = self.pwm.is_valid_step(pwm_step)
             expected = is_valid
             self.assertEqual(computed, expected)
 
-    def test_pwm_steps(self):
-        pwm = PWM(fan_config=self.fan_config)
+    def test_pwm_settings(self):
         # -----------------------------------------------------------------
-        computed = pwm.get_steps()
+        computed = self.pwm.get_pwm_settings()
+        expected = (1, 8)
+        # -----------------------------------------------------------------
+        self.assertEqual(computed, expected)
+
+    def test_pwm_frequency(self):
+        # -----------------------------------------------------------------
+        computed = self.pwm.get_pwm_frequency()
+        expected = 22500.0
+        # -----------------------------------------------------------------
+        self.assertEqual(computed, expected)
+
+    def test_pwm_steps(self):
+        # -----------------------------------------------------------------
+        computed = self.pwm.get_steps()
         expected = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
         # -----------------------------------------------------------------
         self.assertEqual(computed, expected)
 
-    def test_pwm_calculations(self):
-        values = {
-            45000: (1,  4),
-            22500: (1,  8),
-            22000: (1,  8),  # closest match is 22500
-             6000: (1, 30),  # noqa: E131
-             5500: (2, 16),  # noqa: E131
-             1000: (6, 30),  # noqa: E131
-        }
-        for pwm_frequency, pwm_settings in values.items():
-            computed = calculate_pwm_factors(pwm_frequency=pwm_frequency)
-            expected = pwm_settings
-            self.assertEqual(computed, expected)
-
     def test_convert_percent2step(self):
-        pwm = PWM(fan_config=self.fan_config)
         values = {
             # exact matches
             34: 3,
@@ -89,23 +105,31 @@ class TestScsPwm(unittest.TestCase):
             37: 4,
         }
         for duty_cycle, pwm_step in values.items():
-            computed = pwm.convert_percent2step(duty_cycle)
+            computed = self.pwm.convert_percent2step(duty_cycle)
             expected = pwm_step
             self.assertEqual(computed, expected)
 
+    def test_convert_percent2step_zero(self):
+        # inject a step with a 0% duty cycle to test the special handling
+        # of this value (prevent division by zero)
+        self.pwm._steps[0] = (0, 400)
+        # -----------------------------------------------------------------
+        computed = self.pwm.convert_percent2step(1)
+        expected = 0
+        # -----------------------------------------------------------------
+        self.assertEqual(computed, expected)
+
     def test_convert_step2percent(self):
-        pwm = PWM(fan_config=self.fan_config)
         values = {
             3: 34,
             4: 40,
         }
         for pwm_step, duty_cycle in values.items():
-            computed = pwm.convert_step2percent(pwm_step)
+            computed = self.pwm.convert_step2percent(pwm_step)
             expected = duty_cycle
             self.assertEqual(computed, expected)
 
     def test_convert_rpm2step(self):
-        pwm = PWM(fan_config=self.fan_config)
         values = {
             # exact matches
             409: 3,
@@ -115,70 +139,36 @@ class TestScsPwm(unittest.TestCase):
             450: 4,
         }
         for rpm, pwm_step in values.items():
-            computed = pwm.convert_rpm2step(rpm)
+            computed = self.pwm.convert_rpm2step(rpm)
             expected = pwm_step
             self.assertEqual(computed, expected)
 
+    def test_convert_rpm2step_zero(self):
+        # inject a step with 0 RPM to test the special handling
+        # of this value (prevent division by zero)
+        self.pwm._steps[1] = (10, 0)
+        # -----------------------------------------------------------------
+        computed = self.pwm.convert_rpm2step(1)
+        expected = 1
+        # -----------------------------------------------------------------
+        self.assertEqual(computed, expected)
+
+    def test_convert_rpm2step_unknown(self):
+        # inject a step with unknown RPM to test the special handling
+        # of this value
+        self.pwm._steps[2] = (10, None)
+        # -----------------------------------------------------------------
+        computed = self.pwm.convert_rpm2step(1)
+        expected = 3  # step 2 is defined but has no RPM, pick next
+        # -----------------------------------------------------------------
+        self.assertEqual(computed, expected)
+
     def test_convert_step2rpm(self):
-        pwm = PWM(fan_config=self.fan_config)
         values = {
             3: 409,
             4: 479,
         }
         for pwm_step, rpm in values.items():
-            computed = pwm.convert_step2rpm(pwm_step)
+            computed = self.pwm.convert_step2rpm(pwm_step)
             expected = rpm
             self.assertEqual(computed, expected)
-
-# class PWM(SpeedControlSetter):
-#     def get_speed_mapping(self) -> SpeedMappings:
-#         """
-#         define available control steps and their resulting fan speeds
-#         """
-#         return self._steps.copy()
-
-# def calculate_pwm_frequency(pwm_f: int, pwm_d: int) -> float:
-#     """
-#     calculate PWM frequency for provided PWM_D and PWM_F
-#     """
-#     pwm_frequency = 360000/(2*pwm_f*pwm_d)
-#     return pwm_frequency
-
-
-# def calculate_pwm_factors(pwm_frequency: int) -> tuple[int, int]:
-#     """
-#     calculate PWM_D and PWM_F for provided frequency
-#      - this function minimizes PWM_D to allow for maximum resolution (PWM_F)
-#      - PWM_F maxes out at 31 (0x1F)
-#     """
-#     if 0 <= pwm_frequency <= 180000:
-#         value1 = 360000/(2*pwm_frequency)
-#         pwm_d = math.ceil(value1 / 31)
-#         pwm_f = round(value1 / pwm_d)
-#         return (pwm_d, pwm_f)
-#     else:
-#         raise ValueError("provided frequency is out of range")
-
-
-# def _convert_dutycycle_percentage2raw(value: int) -> int:
-#     """
-#     convert the provided value from percentage to the internal value
-#     used by EMC2101 (0% -> 0x00, 100% -> 0x3F)
-#     """
-#     # 0x3F = 63
-#     if 0 <= value <= 100:
-#         return round(value * 63 / 100)
-#     else:
-#         raise ValueError("Percentage value must be in range 0 ≤ x ≤ 100!")
-
-
-# def _convert_dutycycle_raw2percentage(value: int) -> int:
-#     """
-#     convert the provided value from the internal value to percentage
-#     used by EMC2101 (0x00 -> 0%, 0x3F -> 100%)
-#     """
-#     # 0x3F = 63
-#     if 0 <= value <= 63:
-#         return round(value * 100 / 63)
-#     else:
-#         raise ValueError("Raw value must be in range 0 ≤ x ≤ 63!")

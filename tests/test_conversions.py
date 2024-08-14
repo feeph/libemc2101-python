@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-"""
+# pylint: disable=missing-class-docstring,missing-function-docstring,missing-module-docstring
 
 import unittest
 
