@@ -1,21 +1,17 @@
 #!/usr/bin/env python3
-"""
-"""
 
 # a reimplementation of https://github.com/adafruit/Adafruit_CircuitPython_EMC2101
 # Datasheet: https://ww1.microchip.com/downloads/en/DeviceDoc/2101.pdf
 
 import logging
-import math
-import time
 from enum import Enum
-from typing import Any
 
 # module busio provides no type hints
 import busio  # type: ignore
 
+import feeph.emc2101.utilities
 from feeph.emc2101.core import CONVERSIONS_PER_SECOND, Emc2101_core, ExternalSensorStatus, SpinUpDuration, SpinUpStrength
-from feeph.emc2101.fan_configs import FanConfig, RpmControlMode, Steps, generic_pwm_fan
+from feeph.emc2101.fan_configs import FanConfig, RpmControlMode, generic_pwm_fan
 
 LH = logging.getLogger(__name__)
 
@@ -69,8 +65,8 @@ ets_2n3906 = ExternalTemperatureSensorConfig(ideality_factor=0x12, beta_factor=0
 
 
 class TemperatureLimitType(Enum):
-    TO_COLD = 1
-    TO_HOT  = 2
+    TOO_COLD = 1
+    TOO_HOT  = 2
 
 
 # TODO add convenience function to refresh state
@@ -103,7 +99,7 @@ class Emc2101_PWM:
             LH.info("EMC2101 and connected fan both use PWM to control fan speed. Good.")
             from feeph.emc2101.scs import PWM
             scs = PWM(fan_config=fan_config)
-            pwm_d, pwm_f = calculate_pwm_factors(pwm_frequency=fan_config.pwm_frequency)
+            pwm_d, pwm_f = feeph.emc2101.utilities.calculate_pwm_factors(pwm_frequency=fan_config.pwm_frequency)
             emc2101.configure_pwm_control(pwm_d=pwm_d, pwm_f=pwm_f, step_max=max(scs.get_steps()))
         else:
             raise ValueError("fan has unsupported rpm control mode")
@@ -153,7 +149,7 @@ class Emc2101_PWM:
             LH.warning("Pin 6 is in alert mode. Can't configure spinup behavior.")
             return False
         else:
-            raise NotImplementedError("unsupported pin 6 mode")
+            raise RuntimeError('internal error - inconsistent state')
 
     def get_rpm(self) -> int | None:
         return self._emc2101.get_rpm()
@@ -220,6 +216,7 @@ class Emc2101_PWM:
     def is_lookup_table_enabled(self) -> bool:
         return self._emc2101.is_lookup_table_enabled()
 
+    # TODO unit should be checked before entering the loop
     def update_lookup_table(self, values: dict[int, int], unit: FanSpeedUnit = FanSpeedUnit.PERCENT) -> bool:
         """
         populate the lookup table with the provided values and
@@ -297,13 +294,15 @@ class Emc2101_PWM:
         """
         return self._emc2101.get_sensor_temperature()
 
+    # TODO redesign the sensor temperature limit related functions. The interface is weird.
+
     def get_sensor_temperature_limit(self, limit_type: TemperatureLimitType) -> float:
         """
         get upper/lower temperature alerting limit in °C
         """
-        if limit_type == TemperatureLimitType.TO_COLD:
+        if limit_type == TemperatureLimitType.TOO_COLD:
             return self._emc2101.get_sensor_low_temperature_limit()
-        elif limit_type == TemperatureLimitType.TO_HOT:
+        elif limit_type == TemperatureLimitType.TOO_HOT:
             return self._emc2101.get_sensor_high_temperature_limit()
         else:
             raise ValueError("invalid limit type")
@@ -315,9 +314,9 @@ class Emc2101_PWM:
         The fractional part has limited precision and will be clamped to the
         nearest available step. The clamped value is returned to the caller.
         """
-        if limit_type == TemperatureLimitType.TO_COLD:
+        if limit_type == TemperatureLimitType.TOO_COLD:
             return self._emc2101.set_sensor_low_temperature_limit(value=value)
-        elif limit_type == TemperatureLimitType.TO_HOT:
+        elif limit_type == TemperatureLimitType.TOO_HOT:
             return self._emc2101.set_sensor_high_temperature_limit(value=value)
         else:
             raise ValueError("invalid limit type")
@@ -376,154 +375,3 @@ class Emc2101_PWM:
         dif = ets_config.diode_ideality_factor
         bcf = ets_config.beta_compensation_factor
         self._emc2101.configure_external_temperature_sensor(dif=dif, bcf=bcf)
-
-
-def calibrate_pwm_fan(i2c_bus: busio.I2C, model: str, pwm_frequency: int = 22500) -> FanConfig | None:
-    """
-    walk through various settings and determine the fan's configuration
-    parameters
-    """
-    LH.info("Calibrating fan parameters.")
-    pwm_d, pwm_f = calculate_pwm_factors(pwm_frequency=pwm_frequency)
-    steps_list = list(range(pwm_f * 2))
-    emc2101 = Emc2101_core(i2c_bus=i2c_bus)
-    emc2101.configure_pin_six_as_tacho()
-    emc2101.configure_pwm_control(pwm_d=pwm_d, pwm_f=pwm_f, step_max=max(steps_list))
-    # -----------------------------------------------------------------
-    LH.debug("Disabling gradual speed rampup.")
-    # TODO disable gradual rampup
-    # TODO set initial driver strength to 100%
-    # -----------------------------------------------------------------
-    LH.info("Testing if fan responds to PWM signal:")
-    LH.debug("speed control steps: %s", steps_list)
-    step1 = steps_list[int(len(steps_list) / 2)]  # pick something in the middle
-    step2 = steps_list[-2]                        # pick the second highest possible setting
-    if step1 == step2:
-        LH.warning("Fan does not have enough steps to calibrate!")
-        return None
-    emc2101.set_driver_strength(step1)
-    time.sleep(5)
-    dutycycle1 = int(step1 * 100 / len(steps_list))
-    rpm1 = emc2101.get_rpm()
-    LH.debug("dutycycle: %i%% -> RPM: %i", dutycycle1, rpm1)
-    emc2101.set_driver_strength(step2)
-    time.sleep(5)
-    dutycycle2 = int(step2 * 100 / len(steps_list))
-    rpm2 = emc2101.get_rpm()
-    LH.debug("dutycycle: %i%% -> RPM: %i", dutycycle2, rpm2)
-    if rpm1 is None or rpm2 is None:
-        LH.error("Unable to get a reliable RPM reading. Aborting.")
-        return None
-    if rpm1 * 100 / rpm2 < 96:
-        LH.info("Yes, it does. Observed an RPM change in response to PWM signal. (%i%%: %i -> %i%%: %i RPM)", dutycycle1, rpm1, dutycycle2, rpm2)
-    else:
-        LH.warning("Failed to observe a significant speed change in response to PWM signal! Aborting.")
-        LH.warning("Please verify wiring and configuration.")
-        return None
-    # -----------------------------------------------------------------
-    LH.info("Mapping PWM dutycycle to RPM. Please wait.")
-    mappings = list()
-    for step in steps_list:
-        dutycycle = int(step * 100 / len(steps_list))
-        # set fan speed and wait for the speed to settle
-        emc2101.set_driver_strength(step)
-        time.sleep(1)
-        readings = [99999, 99999, 99999]
-        for i in range(24):
-            cursor = i % len(readings)
-            rpm_cur = emc2101.get_rpm()
-            if rpm_cur is not None:
-                # order is important! (update readings before calculating the average)
-                readings[cursor] = rpm_cur
-                rpm_avg = sum(readings) / len(readings)
-                # calculate deviation from average
-                deviation = rpm_cur / rpm_avg
-                LH.debug("step: %2i i: %2i -> rpm: %4i deviation: %3.2f", step, cursor, rpm_cur, deviation)
-                if 0.99 <= deviation <= 1.01:
-                    # RPM will never be exact and fluctuates slightly
-                    # -> round to nearest factor of 5
-                    rpm = round(rpm_avg / 5) * 5
-                    LH.debug("Fan has settled: (step: %i -> dutycycle: %3i%%, rpm: %i)", step, dutycycle, rpm)
-                    mappings.append((step, dutycycle, rpm))
-                    break
-                else:
-                    time.sleep(0.5)
-            else:
-                LH.error("Unable to get a reliable RPM reading. Aborting.")
-                return None
-        else:
-            LH.warning("Fan never settled! (step: %i -> dutycycle: %3i%%, rpm: <n/a>)", step, dutycycle)
-            mappings.append((step, dutycycle, rpm))
-
-    # determine maximum RPM
-    rpm_max = max([rpm for (_, _, rpm) in mappings])
-    LH.info("Maximum RPM: %i", rpm_max)
-
-    # prune steps
-    #  - multiple steps may result in the same RPM (e.g. minimum RPM)
-    #  - ensure each step is significantly different from the previous
-    #  - ensure each step increases RPM
-    prune = list()
-    rpm_delta_min = rpm_max * 0.011
-    for i in range(len(mappings) - 1):
-        step, _, rpm_this = mappings[i]
-        _, _, rpm_next = mappings[i + 1]
-        if rpm_this + rpm_delta_min <= rpm_next:
-            # significantly different from next element -> keep it
-            pass
-        else:
-            # within range of next element -> prune it
-            prune.append(step)
-
-    steps: Steps = dict()
-    for step, dutycycle, rpm in mappings:
-        rpm_percent = rpm * 100 / rpm_max
-        LH.info("step: %2i dutycycle: %3i%% -> RPM: %5i (%3.0f%%)", step, dutycycle, rpm, rpm_percent)
-        if step not in prune:
-            steps[step] = (dutycycle, rpm)
-
-    fan_profile = FanConfig(
-        model=model,
-        rpm_control_mode=RpmControlMode.PWM,
-        pwm_frequency=pwm_frequency,
-        minimum_duty_cycle=min([dutycycle for (_, (dutycycle, _)) in steps.items()]),  # e.g. 20%
-        maximum_duty_cycle=max([dutycycle for (_, (dutycycle, _)) in steps.items()]),  # typically 100%
-        minimum_rpm=min([rpm for (_, (_, rpm)) in steps.items() if rpm is not None]),
-        maximum_rpm=max([rpm for (_, (_, rpm)) in steps.items() if rpm is not None]),
-        steps=steps,
-    )
-    return fan_profile
-
-
-def calculate_pwm_factors(pwm_frequency: int) -> tuple[int, int]:
-    """
-    calculate PWM_D and PWM_F for provided frequency
-     - this function minimizes PWM_D to allow for maximum resolution (PWM_F)
-     - PWM_F maxes out at 31 (0x1F)
-    """
-    if 0 <= pwm_frequency <= 180000:
-        value1 = 360000 / (2 * pwm_frequency)
-        pwm_d = math.ceil(value1 / 31)
-        pwm_f = round(value1 / pwm_d)
-        return (pwm_d, pwm_f)
-    else:
-        raise ValueError("provided frequency is out of range")
-
-
-def parse_fanconfig_register(value: int) -> dict[str, Any]:
-    # 0b00000000
-    #         ^^-- tachometer input mode
-    #        ^---- clock frequency override
-    #       ^----- clock select
-    #      ^------ polarity (0 = 100->0, 1 = 0->100)
-    #     ^------- configure lookup table (0 = on, 1 = off)
-    config = {
-        "tachometer input mode":    value & 0b0000_0011,
-        "clock frequency override":     'use frequency divider' if value & 0b0000_0100 else 'use clock select',
-        "clock select base frequency":  '1.4kHz' if value & 0b0000_1000 else '360kHz',
-        "polarity":                     '0x00 = 100%, 0xFF = 0%' if value & 0b0001_0000 else '0x00 = 0%, 0xFF = 100%',
-        "configure lookup table":       'allow dutycycle update' if value & 0b0010_0000 else 'disable dutycycle update',
-        "external temperature setting": 'override external temperature' if value & 0b0100_0000 else 'measure external temperature',
-        # the highest bit is unused
-    }
-    return config

@@ -169,29 +169,29 @@ class Emc2101_core:
     # ---------------------------------------------------------------------
 
     def configure_pin_six_as_alert(self) -> bool:
-        # set 0x03.2 to 0
-        with BurstHandler(i2c_bus=self._i2c_bus, i2c_adr=self._i2c_adr) as bh:
-            cfg_register_value = bh.read_register(0x03)
-            if cfg_register_value is not None:
+        try:
+            # set 0x03.2 to 0
+            with BurstHandler(i2c_bus=self._i2c_bus, i2c_adr=self._i2c_adr) as bh:
+                cfg_register_value = bh.read_register(0x03)
                 bh.write_register(0x03, cfg_register_value & 0b1111_1011)
                 # clear spin up behavior settings
                 # (spin up is unavailable when pin 6 is in alert mode),
                 bh.write_register(0x4B, 0b0000_0000)
                 return True
-            else:
-                LH.error("Unable to read config register!")
-                return False
+        except RuntimeError:
+            LH.error("Unable to read config register!")
+            return False
 
     def configure_pin_six_as_tacho(self) -> bool:
-        # set 0x03.2 to 1
-        with BurstHandler(i2c_bus=self._i2c_bus, i2c_adr=self._i2c_adr) as bh:
-            cfg_register_value = bh.read_register(0x03)
-            if cfg_register_value is not None:
+        try:
+            # set 0x03.2 to 1
+            with BurstHandler(i2c_bus=self._i2c_bus, i2c_adr=self._i2c_adr) as bh:
+                cfg_register_value = bh.read_register(0x03)
                 bh.write_register(0x03, cfg_register_value | 0b0000_0100)
                 return True
-            else:
-                LH.error("Unable to read config register!")
-                return False
+        except RuntimeError:
+            LH.error("Unable to read config register!")
+            return False
 
     def configure_dac_control(self, step_max: int):
         # enable DAC control (set 0x03.4 to 1)
@@ -577,39 +577,17 @@ class Emc2101_core:
             dev_status = bh.read_register(0x02)
             if not dev_status & 0b0000_0100:
                 LH.debug("The diode fault bit is clear.")
-                bh.write_register(0x12, dif)
+                bh.write_register(0x17, dif)
                 bh.write_register(0x18, bcf)
                 return True
             else:
                 LH.error("The diode fault bit is set: Sensor is faulty or missing.")
                 return False
 
-    def _uses_alert_mode(self) -> bool:
-        return not self._uses_tacho_mode()
-
     def _uses_tacho_mode(self) -> bool:
         with BurstHandler(i2c_bus=self._i2c_bus, i2c_adr=self._i2c_adr) as bh:
             status_register = bh.read_register(0x03)
         return bool(status_register & 0b0000_0100)
-
-
-# def parse_fanconfig_register(value: int) -> dict[str, Any]:
-#     # 0b00000000
-#     #         ^^-- tachometer input mode
-#     #        ^---- clock frequency override
-#     #       ^----- clock select
-#     #      ^------ polarity (0 = 100->0, 1 = 0->100)
-#     #     ^------- configure lookup table (0 = on, 1 = off)
-#     config = {
-#         "tachometer input mode":    value & 0b0000_0011,
-#         "clock frequency override":     'use frequency divider' if value & 0b0000_0100 else 'use clock select',
-#         "clock select base frequency":  '1.4kHz' if value & 0b0000_1000 else '360kHz',
-#         "polarity":                     '0x00 = 100%, 0xFF = 0%' if value & 0b0001_0000 else '0x00 = 0%, 0xFF = 100%',
-#         "configure lookup table":       'allow dutycycle update' if value & 0b0010_0000 else 'disable dutycycle update',
-#         "external temperature setting": 'override external temperature' if value & 0b0100_0000 else 'measure external temperature',
-#         # the highest bit is unused
-#     }
-#     return config
 
 
 def _convert_rpm2tach(rpm: int) -> tuple[int, int]:

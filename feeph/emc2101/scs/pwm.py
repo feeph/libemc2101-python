@@ -3,8 +3,8 @@
 """
 
 import logging
-import math
 
+import feeph.emc2101.utilities
 from feeph.emc2101.fan_configs import FanConfig
 from feeph.emc2101.scs.base_class import SpeedControlSetter
 
@@ -28,18 +28,11 @@ class PWM(SpeedControlSetter):
         else:
             raise ValueError("PWM fans must configure minmum and maximum duty cycle")
         # calculate and configure PWM_D and PWM_F settings
-        (pwm_d, pwm_f) = calculate_pwm_factors(pwm_frequency=fan_config.pwm_frequency)
+        (pwm_d, pwm_f) = feeph.emc2101.utilities.calculate_pwm_factors(pwm_frequency=fan_config.pwm_frequency)
         LH.debug("PWM frequency: %dHz -> PWM_D: %i PWM_F: %i", fan_config.pwm_frequency, pwm_d, pwm_f)
         self._pwm_d = pwm_d
         self._pwm_f = pwm_f
-        if fan_config.steps is not None:
-            self._steps = fan_config.steps
-        else:
-            self._steps = {}
-            max_step = (pwm_f * 2) - 1
-            for step in range(pwm_f * 2):
-                dutycycle = int(step * 100 / max_step)
-                self._steps[step] = (dutycycle, None)
+        self._steps = fan_config.steps
 
     def is_valid_step(self, value: int) -> bool:
         return value in self._steps.keys()
@@ -62,8 +55,7 @@ class PWM(SpeedControlSetter):
         """
         step_cur = None
         deviation_cur = None
-        for step_new, record in self._steps.items():
-            percent_step = record[0]
+        for step_new, (percent_step, _) in self._steps.items():
             if percent_step == 0:
                 percent_step = 1
             deviation_new = abs(1 - percent / percent_step)
@@ -81,8 +73,7 @@ class PWM(SpeedControlSetter):
         """
         step_cur = None
         deviation_cur = None
-        for step_new, record in self._steps.items():
-            rpm_step = record[1]
+        for step_new, (_, rpm_step) in self._steps.items():
             if rpm_step is not None:
                 if rpm_step == 0:
                     rpm_step = 1
@@ -104,31 +95,13 @@ def calculate_pwm_frequency(pwm_d: int, pwm_f: int) -> float:
     return pwm_frequency
 
 
-def calculate_pwm_factors(pwm_frequency: int) -> tuple[int, int]:
-    """
-    calculate PWM_D and PWM_F for provided frequency
-     - this function minimizes PWM_D to allow for maximum resolution (PWM_F)
-     - PWM_F maxes out at 31 (0x1F)
-    """
-    if 0 <= pwm_frequency <= 180000:
-        value1 = 360000 / (2 * pwm_frequency)
-        pwm_d = math.ceil(value1 / 31)
-        pwm_f = round(value1 / pwm_d)
-        return (pwm_d, pwm_f)
-    else:
-        raise ValueError("provided frequency is out of range")
-
-
 def _convert_dutycycle_percentage2raw(value: int) -> int:
     """
     convert the provided value from percentage to the internal value
     used by EMC2101 (0% -> 0x00, 100% -> 0x3F)
     """
-    # 0x3F = 63
-    if 0 <= value <= 100:
-        return round(value * 63 / 100)
-    else:
-        raise ValueError("Percentage value must be in range 0 ≤ x ≤ 100!")
+    # value range already verified by FanConfig
+    return round(value * 63 / 100)  # 0x3F = 63
 
 
 # TODO decide what to do with this block
