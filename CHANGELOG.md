@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.2.2](https://github.com/feeph/libemc2101-python/compare/v0.2.1...v0.2.2) (2024-08-14)
+
+
+### Bug Fixes
+
+* fix error handling conditions for pin 6 configuration ([f525e67](https://github.com/feeph/libemc2101-python/commit/f525e67f9a301c6134490bfd932112823ea1e290))
+* fix issues identified by newly added unit tests ([95b8e98](https://github.com/feeph/libemc2101-python/commit/95b8e989b3b954e6fecb2af87b40d8b48b744fcd))
+* fix typo in variable name ([6501778](https://github.com/feeph/libemc2101-python/commit/65017781d5b57193b0b1b15499211e2ba1c45796))
+* improve code quality and fix identified bugs ([c713556](https://github.com/feeph/libemc2101-python/commit/c7135563b689a734e82f06f54ce7adba56e3fb7a))
+* improve code quality and fix identified bugs ([#47](https://github.com/feeph/libemc2101-python/issues/47)) ([c713556](https://github.com/feeph/libemc2101-python/commit/c7135563b689a734e82f06f54ce7adba56e3fb7a))
+
 ## [0.2.1](https://github.com/feeph/libemc2101-python/compare/v0.2.0...v0.2.1) (2024-07-20)
 
 
