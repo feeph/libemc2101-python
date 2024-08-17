@@ -12,6 +12,9 @@ from feeph.emc2101.fan_configs import FanConfig, RpmControlMode, Steps
 
 LH = logging.getLogger('feeph.emc2101')
 
+SLEEP_TIME1 = 5.0
+SLEEP_TIME2 = 0.5
+
 
 # This function has limited code coverage since it depends on active
 # feedback from the underlying device. We will need a mock to be able
@@ -40,12 +43,12 @@ def calibrate_pwm_fan(i2c_bus: busio.I2C, model: str, pwm_frequency: int = 22500
     step1 = steps_list[int(len(steps_list) / 2)]  # pick something in the middle
     step2 = steps_list[-2]                        # pick the second highest possible setting
     emc2101.set_driver_strength(step1)
-    time.sleep(5)
+    time.sleep(SLEEP_TIME1)
     dutycycle1 = int(step1 * 100 / len(steps_list))
     rpm1 = emc2101.get_rpm()
     LH.debug("dutycycle: %i%% -> RPM: %i", dutycycle1, rpm1)
     emc2101.set_driver_strength(step2)
-    time.sleep(5)
+    time.sleep(SLEEP_TIME1)
     dutycycle2 = int(step2 * 100 / len(steps_list))
     rpm2 = emc2101.get_rpm()
     LH.debug("dutycycle: %i%% -> RPM: %i", dutycycle2, rpm2)
@@ -65,7 +68,7 @@ def calibrate_pwm_fan(i2c_bus: busio.I2C, model: str, pwm_frequency: int = 22500
         dutycycle = int(step * 100 / len(steps_list))
         # set fan speed and wait for the speed to settle
         emc2101.set_driver_strength(step)
-        time.sleep(1)
+        time.sleep(SLEEP_TIME2)
         readings = [99999, 99999, 99999]
         for i in range(24):
             cursor = i % len(readings)
@@ -85,7 +88,7 @@ def calibrate_pwm_fan(i2c_bus: busio.I2C, model: str, pwm_frequency: int = 22500
                     mappings.append((step, dutycycle, rpm))
                     break
                 else:
-                    time.sleep(0.5)
+                    time.sleep(SLEEP_TIME2)
             else:
                 LH.error("Unable to get a reliable RPM reading. Aborting.")
                 return None

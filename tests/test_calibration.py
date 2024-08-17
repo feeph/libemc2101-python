@@ -16,6 +16,9 @@ if os.environ.get('TEST_EMC2101_CHIP', 'n') == 'y':
     HAS_HARDWARE = True
 else:
     HAS_HARDWARE = False
+    # disable sleep timers - there is no fan to wait for
+    sut.SLEEP_TIME1 = 0
+    sut.SLEEP_TIME2 = 0
 
 
 # pylint: disable=protected-access
