@@ -3,6 +3,7 @@
 
 import os
 import unittest
+from unittest.mock import MagicMock, call
 
 # modules board and busio provide no type hints
 import board  # type: ignore
@@ -98,6 +99,10 @@ class TestEmc2101(unittest.TestCase):
         # -----------------------------------------------------------------
         self.assertEqual(computed, expected)
 
+    # ---------------------------------------------------------------------
+    # fan speed settings
+    # ---------------------------------------------------------------------
+
     def test_configure_dac_control(self):
         self.emc2101.configure_dac_control(15)
         # -----------------------------------------------------------------
@@ -159,6 +164,42 @@ class TestEmc2101(unittest.TestCase):
         with BurstHandler(i2c_bus=self.i2c_bus, i2c_adr=self.i2c_adr) as bh:
             self.assertEqual(bh.read_register(0x4C), 0)
 
+    def test_update_lookup_table_step_too_low(self):
+        lut = {
+            20: -1,
+        }
+        # -----------------------------------------------------------------
+        # -----------------------------------------------------------------
+        self.assertRaises(ValueError, self.emc2101.update_lookup_table, values=lut)
+
+    def test_update_lookup_table_step_too_high(self):
+        lut = {
+            20: 64,
+        }
+        # -----------------------------------------------------------------
+        # -----------------------------------------------------------------
+        self.assertRaises(ValueError, self.emc2101.update_lookup_table, values=lut)
+
+    def test_update_lookup_table_temp_too_low(self):
+        lut = {
+            -1: 40,
+        }
+        # -----------------------------------------------------------------
+        # -----------------------------------------------------------------
+        self.assertRaises(ValueError, self.emc2101.update_lookup_table, values=lut)
+
+    def test_update_lookup_table_temp_too_high(self):
+        lut = {
+            101: 40,
+        }
+        # -----------------------------------------------------------------
+        # -----------------------------------------------------------------
+        self.assertRaises(ValueError, self.emc2101.update_lookup_table, values=lut)
+
+    # ---------------------------------------------------------------------
+    # temperature settings
+    # ---------------------------------------------------------------------
+
     def test_set_sensor_low_temperature_limit(self):
         # -----------------------------------------------------------------
         # -----------------------------------------------------------------
@@ -178,6 +219,38 @@ class TestEmc2101(unittest.TestCase):
         expected = False
         # -----------------------------------------------------------------
         self.assertEqual(computed, expected)
+
+    # One Shot Register (0x0F)
+    #   Writing to this register initiates a one shot update of the
+    #   temperature data. Data is not relevant and is not stored.
+    def test_force_temperature_conversion(self):
+        # we use a mock since there is no other way to observe this change
+        self.i2c_bus.writeto = MagicMock(name='writeto')
+        # -----------------------------------------------------------------
+        self.emc2101.force_temperature_conversion()
+        computed = self.i2c_bus.writeto.mock_calls
+        expected = [
+            call(address=self.i2c_adr, buffer=bytearray([0x0F, 0x00])),
+        ]
+        # -----------------------------------------------------------------
+        self.assertEqual(computed, expected)
+
+    def test_force_temperature(self):
+        # -----------------------------------------------------------------
+        self.emc2101.force_temperature(21.5)
+        # -----------------------------------------------------------------
+        with BurstHandler(i2c_bus=self.i2c_bus, i2c_adr=self.i2c_adr) as bh:
+            self.assertEqual(bh.read_register(0x0C), 22)
+            self.assertEqual(bh.read_register(0x04A), 0b0110_0000)
+
+    def test_clear_temperature(self):
+        # -----------------------------------------------------------------
+        self.emc2101.force_temperature(21.5)
+        self.emc2101.clear_temperature()
+        # -----------------------------------------------------------------
+        with BurstHandler(i2c_bus=self.i2c_bus, i2c_adr=self.i2c_adr) as bh:
+            self.assertEqual(bh.read_register(0x0C), 0)
+            self.assertEqual(bh.read_register(0x04A), 0b0010_0000)
 
     # ---------------------------------------------------------------------
     # usage errors

@@ -1,17 +1,10 @@
 #!/usr/bin/env python3
-"""
-perform PWM related tests
-
-use simulated device:
-  pdm run pytest
-use hardware device:
-  TEST_EMC2101_CHIP=y pdm run pytest
-"""
 # pylint: disable=missing-class-docstring,missing-function-docstring
 
 import math
 import os
 import unittest
+from unittest.mock import MagicMock, call
 
 # modules board and busio provide no type hints
 import board  # type: ignore
@@ -309,6 +302,38 @@ class TestEmc2101PWM(unittest.TestCase):
             expected = bh.read_register(0x00)
         # -----------------------------------------------------------------
         self.assertEqual(computed, expected, f"Got unexpected chip temperature '{computed}'.")
+
+    # One Shot Register (0x0F)
+    #   Writing to this register initiates a one shot update of the
+    #   temperature data. Data is not relevant and is not stored.
+    def test_force_temperature_conversion(self):
+        # we use a mock since there is no other way to observe this change
+        self.i2c_bus.writeto = MagicMock(name='writeto')
+        # -----------------------------------------------------------------
+        self.emc2101.force_temperature_conversion()
+        computed = self.i2c_bus.writeto.mock_calls
+        expected = [
+            call(address=self.i2c_adr, buffer=bytearray([0x0F, 0x00])),
+        ]
+        # -----------------------------------------------------------------
+        self.assertEqual(computed, expected)
+
+    def test_force_temperature(self):
+        # -----------------------------------------------------------------
+        self.emc2101.force_temperature(21.5)
+        # -----------------------------------------------------------------
+        with BurstHandler(i2c_bus=self.i2c_bus, i2c_adr=self.i2c_adr) as bh:
+            self.assertEqual(bh.read_register(0x0C), 22)
+            self.assertEqual(bh.read_register(0x04A), 0b0110_0000)
+
+    def test_clear_temperature(self):
+        # -----------------------------------------------------------------
+        self.emc2101.force_temperature(21.5)
+        self.emc2101.clear_temperature()
+        # -----------------------------------------------------------------
+        with BurstHandler(i2c_bus=self.i2c_bus, i2c_adr=self.i2c_adr) as bh:
+            self.assertEqual(bh.read_register(0x0C), 0)
+            self.assertEqual(bh.read_register(0x04A), 0b0010_0000)
 
     # ---------------------------------------------------------------------
     # temperature limits
