@@ -19,7 +19,7 @@
 
 [project]
 name = "feeph.emc2101"
-version = "0.2.2"
+version = "0.3.0"
 description = "library for I²C-based EMC2101 PWM fan controller"
 authors = [
     {name = "Feeph Aifeimei", email = "55798703+feeph@users.noreply.github.com"},
