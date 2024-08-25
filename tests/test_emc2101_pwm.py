@@ -112,6 +112,14 @@ class TestEmc2101PWM(unittest.TestCase):
         # -----------------------------------------------------------------
         self.assertRaises(ValueError, sut.Emc2101_PWM, i2c_bus=self.i2c_bus, device_config=device_config, fan_config=fan_config)
 
+    def test_no_steps_defined(self):
+        device_config = sut.DeviceConfig(rpm_control_mode=sut.RpmControlMode.PWM, pin_six_mode=sut.PinSixMode.TACHO)
+        # no steps defined in fan config
+        fan_config = sut.FanConfig(model="Mockinator 2000", pwm_frequency=22500, rpm_control_mode=sut.RpmControlMode.PWM, minimum_duty_cycle=20, maximum_duty_cycle=100, minimum_rpm=100, maximum_rpm=2000)
+        # -----------------------------------------------------------------
+        # -----------------------------------------------------------------
+        self.assertRaises(ValueError, sut.Emc2101_PWM, i2c_bus=self.i2c_bus, device_config=device_config, fan_config=fan_config)
+
     # ---------------------------------------------------------------------
     # control fan speed (manually)
     # ---------------------------------------------------------------------
@@ -127,6 +135,60 @@ class TestEmc2101PWM(unittest.TestCase):
         # -----------------------------------------------------------------
         # -----------------------------------------------------------------
         self.assertRaises(ValueError, self.emc2101.set_fixed_speed, value=0, unit=None)
+
+    def test_set_fixed_speed_percent_zero(self):
+        device_config = sut.DeviceConfig(rpm_control_mode=sut.RpmControlMode.PWM, pin_six_mode=sut.PinSixMode.TACHO)
+        steps = {
+            0: (0, 0),
+        }
+        fan_config = sut.FanConfig(model="Mockinator 2000", pwm_frequency=22500, rpm_control_mode=sut.RpmControlMode.PWM, minimum_duty_cycle=20, maximum_duty_cycle=100, minimum_rpm=100, maximum_rpm=2000, steps=steps)
+        emc2101 = sut.Emc2101_PWM(i2c_bus=self.i2c_bus, device_config=device_config, fan_config=fan_config)
+        # -----------------------------------------------------------------
+        computed = emc2101.set_fixed_speed(1, unit=sut.FanSpeedUnit.PERCENT)
+        expected = 0
+        # -----------------------------------------------------------------
+        self.assertEqual(computed, expected)
+
+    def test_set_fixed_speed_percent_invalid(self):
+        # -----------------------------------------------------------------
+        # -----------------------------------------------------------------
+        self.assertRaises(ValueError, self.emc2101.set_fixed_speed, value=101, unit=sut.FanSpeedUnit.PERCENT)
+
+    def test_set_fixed_speed_rpm_zero(self):
+        device_config = sut.DeviceConfig(rpm_control_mode=sut.RpmControlMode.PWM, pin_six_mode=sut.PinSixMode.TACHO)
+        steps = {
+            0: (0, 0),
+        }
+        fan_config = sut.FanConfig(model="Mockinator 2000", pwm_frequency=22500, rpm_control_mode=sut.RpmControlMode.PWM, minimum_duty_cycle=20, maximum_duty_cycle=100, minimum_rpm=100, maximum_rpm=2000, steps=steps)
+        emc2101 = sut.Emc2101_PWM(i2c_bus=self.i2c_bus, device_config=device_config, fan_config=fan_config)
+        # -----------------------------------------------------------------
+        computed = emc2101.set_fixed_speed(1, unit=sut.FanSpeedUnit.RPM)
+        expected = 0
+        # -----------------------------------------------------------------
+        self.assertEqual(computed, expected)
+
+    def test_set_fixed_speed_rpm_none(self):
+        device_config = sut.DeviceConfig(rpm_control_mode=sut.RpmControlMode.PWM, pin_six_mode=sut.PinSixMode.ALERT)
+        steps = {
+            0: (0, None),
+        }
+        fan_config = sut.FanConfig(model="Mockinator 2000", pwm_frequency=22500, rpm_control_mode=sut.RpmControlMode.PWM, minimum_duty_cycle=20, maximum_duty_cycle=100, minimum_rpm=100, maximum_rpm=2000, steps=steps)
+        emc2101 = sut.Emc2101_PWM(i2c_bus=self.i2c_bus, device_config=device_config, fan_config=fan_config)
+        # -----------------------------------------------------------------
+        computed = emc2101.set_fixed_speed(1, unit=sut.FanSpeedUnit.RPM)
+        expected = None
+        # -----------------------------------------------------------------
+        self.assertEqual(computed, expected)
+
+    def test_set_fixed_speed_rpm_invalid(self):
+        # -----------------------------------------------------------------
+        # -----------------------------------------------------------------
+        self.assertRaises(ValueError, self.emc2101.set_fixed_speed, value=-1, unit=sut.FanSpeedUnit.RPM)
+
+    def test_set_fixed_speed_step_invalid(self):
+        # -----------------------------------------------------------------
+        # -----------------------------------------------------------------
+        self.assertRaises(ValueError, self.emc2101.set_fixed_speed, value=-1, unit=sut.FanSpeedUnit.STEP)
 
     # control duty cycle using manual control
 
@@ -222,6 +284,23 @@ class TestEmc2101PWM(unittest.TestCase):
             self.assertEqual(bh.read_register(0x54), 72)
             self.assertEqual(bh.read_register(0x55), 0x0D)
 
+    def test_update_lookup_table_step_invalid(self):
+        values = {
+            16: 0x03,  # temp+speed #1
+            40: 0xff,  # invalid step - will be skipped
+            72: 0x0D,  # temp+speed #3
+        }
+        # -----------------------------------------------------------------
+        computed = self.emc2101.update_lookup_table(values=values, unit=sut.FanSpeedUnit.STEP)
+        expected = True
+        # -----------------------------------------------------------------
+        self.assertEqual(computed, expected)  # update was performed
+        with BurstHandler(i2c_bus=self.i2c_bus, i2c_adr=self.i2c_adr) as bh:
+            self.assertEqual(bh.read_register(0x50), 16)
+            self.assertEqual(bh.read_register(0x51), 0x03)
+            self.assertEqual(bh.read_register(0x52), 72)
+            self.assertEqual(bh.read_register(0x53), 0x0D)
+
     def test_update_lookup_table_percent(self):
         values = {
             16: 20,  # temp+speed #1
@@ -287,6 +366,31 @@ class TestEmc2101PWM(unittest.TestCase):
             self.assertEqual(bh.read_register(0x53), 0x09)
             self.assertEqual(bh.read_register(0x54), 72)
             self.assertEqual(bh.read_register(0x55), 0x0A)
+
+    def test_update_lookup_table_rpm_none(self):
+        device_config = sut.DeviceConfig(rpm_control_mode=sut.RpmControlMode.PWM, pin_six_mode=sut.PinSixMode.ALERT)
+        steps = {
+            0x03: (0, None),
+            0x08: (0, None),
+            0x0D: (0, None),
+        }
+        fan_config = sut.FanConfig(model="Mockinator 2000", pwm_frequency=22500, rpm_control_mode=sut.RpmControlMode.PWM, minimum_duty_cycle=20, maximum_duty_cycle=100, minimum_rpm=100, maximum_rpm=2000, steps=steps)
+        emc2101 = sut.Emc2101_PWM(i2c_bus=self.i2c_bus, device_config=device_config, fan_config=fan_config)
+        emc2101.reset_lookup_table()
+        values = {
+            16: 0x03,  # no RPM availble - will be skipped
+            40: 0x08,  # no RPM availble - will be skipped
+        }
+        # -----------------------------------------------------------------
+        computed = emc2101.update_lookup_table(values=values, unit=sut.FanSpeedUnit.RPM)
+        expected = False
+        # -----------------------------------------------------------------
+        self.assertEqual(computed, expected)  # update was performed
+        with BurstHandler(i2c_bus=self.i2c_bus, i2c_adr=self.i2c_adr) as bh:
+            self.assertEqual(bh.read_register(0x50), 00)
+            self.assertEqual(bh.read_register(0x51), 0x00)
+            self.assertEqual(bh.read_register(0x52), 00)
+            self.assertEqual(bh.read_register(0x53), 0x00)
 
     def test_update_lookup_table_invalid_unit(self):
         values = {
