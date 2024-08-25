@@ -25,6 +25,9 @@ adafruit-platformdetect==3.73.0 \
 adafruit-pureio==1.1.11 \
     --hash=sha256:281ab2099372cc0decc26326918996cbf21b8eed694ec4764d51eefa029d324e \
     --hash=sha256:c4cfbb365731942d1f1092a116f47dfdae0aef18c5b27f1072b5824ad5ea8c7c
+attrs==24.2.0 \
+    --hash=sha256:5cfb1b9148b5b086569baec03f20d7b6bf3bcacc9a42bebf87ffaaca362f6346 \
+    --hash=sha256:81921eb96de3191c8258c199618104dd27ac608d9366f5e35d011eae1867ede2
 binho-host-adapter==0.1.6 \
     --hash=sha256:1e6da7a84e208c13b5f489066f05774bff1d593d0f5bf1ca149c2b8e83eae856 \
     --hash=sha256:f71ca176c1e2fc1a5dce128beb286da217555c6c7c805f2ed282a6f3507ec277

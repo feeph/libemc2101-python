@@ -31,6 +31,7 @@ dependencies = [
     "feeph-i2c>=0.5.0,<1.0.0",
     "gpiod>=2.1.0,<3.0.0",
     "pyyaml>=6.0.0,<7.0.0",
+    "attrs~=24.2",
 ]
 readme = "README.md"
 license = {text = "GPL-3.0-or-later"}

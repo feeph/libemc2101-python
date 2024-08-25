@@ -3,7 +3,6 @@
 
 import os
 import unittest
-from unittest.mock import MagicMock, call
 
 # modules board and busio provide no type hints
 import board  # type: ignore
@@ -40,7 +39,7 @@ class TestEmc2101(unittest.TestCase):
             registers[0xFE] = 0x5D  # manufacturer id
             registers[0xFF] = 0x02  # revision
             self.i2c_bus = EmulatedI2C(state={self.i2c_adr: registers})
-        self.emc2101 = sut.Emc2101_core(i2c_bus=self.i2c_bus)
+        self.emc2101 = sut.Emc2101(i2c_bus=self.i2c_bus, config=sut.ConfigRegister())
         # restore original state after each run
         # (hardware is not stateless)
         self.emc2101.reset_device_registers()
@@ -50,49 +49,53 @@ class TestEmc2101(unittest.TestCase):
         pass
 
     # ---------------------------------------------------------------------
+    # hardware details
+    # ---------------------------------------------------------------------
+
+    def test_manufacturer_id(self):
+        # -----------------------------------------------------------------
+        computed = self.emc2101.get_manufacturer_id()
+        expected = [
+            0x5D,  # SMSC
+        ]
+        # -----------------------------------------------------------------
+        self.assertIn(computed, expected, f"Got unexpected manufacturer ID '{computed}'.")
+
+    def test_product_id(self):
+        # -----------------------------------------------------------------
+        computed = self.emc2101.get_product_id()
+        expected = [
+            0x16,  # EMC2101
+            0x28,  # EMC2101R
+        ]
+        # -----------------------------------------------------------------
+        self.assertIn(computed, expected, f"Got unexpected product ID '{computed}'.")
+
+    def test_product_revision(self):
+        # -----------------------------------------------------------------
+        computed = self.emc2101.get_product_revision()
+        expected = range(0x00, 0x17)  # assuming 0..22 are valid values for revision
+        # -----------------------------------------------------------------
+        self.assertIn(computed, expected, f"Got unexpected product ID '{computed}'.")
+
+    def test_describe_product(self):
+        mid = self.emc2101.get_manufacturer_id()
+        pid = self.emc2101.get_product_id()
+        rev = self.emc2101.get_product_revision()
+        # -----------------------------------------------------------------
+        computed = self.emc2101.describe_device()
+        expected = f"SMSC (0x{mid:02X}) EMC2101 (0x{pid:02X}) (rev: {rev})"
+        # -----------------------------------------------------------------
+        self.assertIn(computed, expected, f"Got unexpected product ID '{computed}'.")
+
+    # ---------------------------------------------------------------------
     # circuit-dependent settings
     # ---------------------------------------------------------------------
 
-    def test_pin_six_as_alert(self):
-        # -----------------------------------------------------------------
-        computed = self.emc2101.configure_pin_six_as_alert()
-        expected = True
-        # -----------------------------------------------------------------
-        self.assertEqual(computed, expected, "Failed to enable alert mode.")
-        with BurstHandler(i2c_bus=self.i2c_bus, i2c_adr=self.i2c_adr) as bh:
-            self.assertEqual(bh.read_register(0x03), 0b0000_0000)
-            self.assertEqual(bh.read_register(0x4B), 0b0000_0000)
-
-    @unittest.skipIf(HAS_HARDWARE, "Skipping forced failure test.")
-    def test_pin_six_as_alert_failure(self):
-        self.i2c_bus._lock_chance = 0
-        # -----------------------------------------------------------------
-        computed = self.emc2101.configure_pin_six_as_alert()
-        expected = False
-        # -----------------------------------------------------------------
-        self.assertEqual(computed, expected)
-
-    def test_pin_six_as_tacho(self):
-        # -----------------------------------------------------------------
-        computed = self.emc2101.configure_pin_six_as_tacho()
-        expected = True
-        # -----------------------------------------------------------------
-        self.assertEqual(computed, expected, "Failed to enable tacho mode.")
-        with BurstHandler(i2c_bus=self.i2c_bus, i2c_adr=self.i2c_adr) as bh:
-            self.assertEqual(bh.read_register(0x03), 0b0000_0100)
-            self.assertEqual(bh.read_register(0x4B), 0b0011_1111)
-
-    @unittest.skipIf(HAS_HARDWARE, "Skipping forced failure test.")
-    def test_pin_six_as_tacho_failure(self):
-        self.i2c_bus._lock_chance = 0
-        # -----------------------------------------------------------------
-        computed = self.emc2101.configure_pin_six_as_tacho()
-        expected = False
-        # -----------------------------------------------------------------
-        self.assertEqual(computed, expected)
-
     def test_pin_get_rpm_in_alert_mode(self):
-        self.emc2101.configure_pin_six_as_alert()
+        # if pin 6 is used as an interrupt pin (alert mode) we can't read
+        # fan speed
+        self.emc2101.set_config_register(sut.ConfigRegister(alt_tach=False))
         # -----------------------------------------------------------------
         computed = self.emc2101.get_rpm()
         expected = None
@@ -103,34 +106,77 @@ class TestEmc2101(unittest.TestCase):
     # fan speed settings
     # ---------------------------------------------------------------------
 
-    def test_configure_dac_control(self):
-        self.emc2101.configure_dac_control(15)
-        # -----------------------------------------------------------------
+    def test_configure_pwm_control_1(self):
         with BurstHandler(i2c_bus=self.i2c_bus, i2c_adr=self.i2c_adr) as bh:
-            computed = bh.read_register(0x03) & 0b0001_0000
-        expected = 0b0001_0000
+            bh.write_register(0x03, 0b0000_0000)  # pwm
+            bh.write_register(0x4D, 0b0001_0111)  # default (0x17)
+            bh.write_register(0x4E, 0b0000_0001)  # default (0x01)
+        # -----------------------------------------------------------------
+        computed = self.emc2101.configure_pwm_control(pwm_d=0x12, pwm_f=0x34, step_max=15)
+        expected = True
         # -----------------------------------------------------------------
         self.assertEqual(computed, expected)
-        self.assertEqual(self.emc2101._step_max, 15)
-
-    def test_configure_pwm_control(self):
-        self.emc2101.configure_pwm_control(pwm_d=0x12, pwm_f=0x34, step_max=15)
-        # -----------------------------------------------------------------
-        # -----------------------------------------------------------------
         with BurstHandler(i2c_bus=self.i2c_bus, i2c_adr=self.i2c_adr) as bh:
-            self.assertFalse(bh.read_register(0x03) & 0b0001_0000)
+            self.assertEqual(bh.read_register(0x03), 0b0000_0000)
             self.assertEqual(bh.read_register(0x4D), 0x34)
             self.assertEqual(bh.read_register(0x4E), 0x12)
 
-    def test_configure_spinup_behaviour(self):
+    def test_configure_pwm_control_2(self):
+        with BurstHandler(i2c_bus=self.i2c_bus, i2c_adr=self.i2c_adr) as bh:
+            bh.write_register(0x03, 0b0001_0000)  # dac
+            bh.write_register(0x4D, 0b0001_0111)  # default (0x17)
+            bh.write_register(0x4E, 0b0000_0001)  # default (0x01)
+        # -----------------------------------------------------------------
+        computed = self.emc2101.configure_pwm_control(pwm_d=0x12, pwm_f=0x34, step_max=15)
+        expected = False
+        # -----------------------------------------------------------------
+        self.assertEqual(computed, expected)
+        with BurstHandler(i2c_bus=self.i2c_bus, i2c_adr=self.i2c_adr) as bh:
+            self.assertEqual(bh.read_register(0x03), 0b0001_0000)
+            self.assertEqual(bh.read_register(0x4D), 0x17)
+            self.assertEqual(bh.read_register(0x4E), 0x01)
+
+    def test_configure_spinup_behaviour_1(self):
         spinup_duration = sut.SpinUpDuration.TIME_0_80    # 0b...._.101
         spinup_strength = sut.SpinUpStrength.STRENGTH_50  # 0b...0_1...
         fast_mode = False                                 # 0b..0._....
-        self.emc2101.configure_spinup_behaviour(spinup_strength=spinup_duration, spinup_duration=spinup_strength, fast_mode=fast_mode)
+        self.emc2101.set_config_register(config=sut.ConfigRegister(alt_tach=True))
         # -----------------------------------------------------------------
+        computed = self.emc2101.configure_spinup_behaviour(spinup_strength=spinup_duration, spinup_duration=spinup_strength, fast_mode=fast_mode)
+        expected = True
         # -----------------------------------------------------------------
+        self.assertEqual(computed, expected)
         with BurstHandler(i2c_bus=self.i2c_bus, i2c_adr=self.i2c_adr) as bh:
-            self.assertEqual(bh.read_register(0x4B), 0b00001101)
+            self.assertEqual(bh.read_register(0x4B), 0b0000_1101)
+
+    def test_configure_spinup_behaviour_2(self):
+        spinup_duration = sut.SpinUpDuration.TIME_0_80    # 0b...._.101
+        spinup_strength = sut.SpinUpStrength.STRENGTH_50  # 0b...0_1...
+        fast_mode = True                                  # 0b..1._....
+        self.emc2101.set_config_register(config=sut.ConfigRegister(alt_tach=True))
+        # -----------------------------------------------------------------
+        computed = self.emc2101.configure_spinup_behaviour(spinup_strength=spinup_duration, spinup_duration=spinup_strength, fast_mode=fast_mode)
+        expected = True
+        # -----------------------------------------------------------------
+        self.assertEqual(computed, expected)
+        with BurstHandler(i2c_bus=self.i2c_bus, i2c_adr=self.i2c_adr) as bh:
+            self.assertEqual(bh.read_register(0x4B), 0b0010_1101)
+
+    def test_configure_spinup_behaviour_3(self):
+        with BurstHandler(i2c_bus=self.i2c_bus, i2c_adr=self.i2c_adr) as bh:
+            bh.write_register(0x03, 0b0000_0000)  # alert mode
+            bh.write_register(0x4B, 0b0011_1111)  # default (0x3F)
+        spinup_duration = sut.SpinUpDuration.TIME_0_80    # 0b...._.101
+        spinup_strength = sut.SpinUpStrength.STRENGTH_50  # 0b...0_1...
+        fast_mode = True                                  # 0b..1._....
+        # -----------------------------------------------------------------
+        computed = self.emc2101.configure_spinup_behaviour(spinup_strength=spinup_duration, spinup_duration=spinup_strength, fast_mode=fast_mode)
+        expected = False  # ignore request, pin 6 is configured for alert mode
+        # -----------------------------------------------------------------
+        self.assertEqual(computed, expected)
+        with BurstHandler(i2c_bus=self.i2c_bus, i2c_adr=self.i2c_adr) as bh:
+            self.assertEqual(bh.read_register(0x03), 0b0000_0000)
+            self.assertEqual(bh.read_register(0x4B), 0b0011_1111)
 
     def test_set_minimum_rpm_too_low(self):
         # due to the way EMC2101's registers are implemented the measured
@@ -197,60 +243,32 @@ class TestEmc2101(unittest.TestCase):
         self.assertRaises(ValueError, self.emc2101.update_lookup_table, values=lut)
 
     # ---------------------------------------------------------------------
-    # temperature settings
+    # convenience functions
     # ---------------------------------------------------------------------
 
-    def test_set_sensor_low_temperature_limit(self):
+    def test_read_fancfg_register(self):
         # -----------------------------------------------------------------
-        # -----------------------------------------------------------------
-        self.assertRaises(ValueError, self.emc2101.set_sensor_low_temperature_limit, -50)
-
-    def test_set_sensor_high_temperature_limit(self):
-        # -----------------------------------------------------------------
-        # -----------------------------------------------------------------
-        self.assertRaises(ValueError, self.emc2101.set_sensor_high_temperature_limit, 150)
-
-    @unittest.skipIf(HAS_HARDWARE, "Skipping forced failure test.")
-    def test_force_external_temperature_sensor_failure(self):
-        with BurstHandler(i2c_bus=self.i2c_bus, i2c_adr=self.i2c_adr) as bh:
-            bh.write_register(0x02, 0b0000_0100)
-        # -----------------------------------------------------------------
-        computed = self.emc2101.configure_external_temperature_sensor(dif=0x12, bcf=0x34)
-        expected = False
+        computed = self.emc2101.read_fancfg_register()
+        expected = 0b0010_0000
         # -----------------------------------------------------------------
         self.assertEqual(computed, expected)
 
-    # One Shot Register (0x0F)
-    #   Writing to this register initiates a one shot update of the
-    #   temperature data. Data is not relevant and is not stored.
-    def test_force_temperature_conversion(self):
-        # we use a mock since there is no other way to observe this change
-        self.i2c_bus.writeto = MagicMock(name='writeto')
+    def test_write_fancfg_register(self):
+        self.emc2101.write_fancfg_register(0b0110_0000)
         # -----------------------------------------------------------------
-        self.emc2101.force_temperature_conversion()
-        computed = self.i2c_bus.writeto.mock_calls
-        expected = [
-            call(address=self.i2c_adr, buffer=bytearray([0x0F, 0x00])),
-        ]
+        computed = self.emc2101.read_fancfg_register()
+        expected = 0b0110_0000
         # -----------------------------------------------------------------
         self.assertEqual(computed, expected)
 
-    def test_force_temperature(self):
+    def test_read_device_registers(self):
+        # this test is sloppy and only compares if we get the right keys, it
+        # does not check if the values are correct (could be random junk)
         # -----------------------------------------------------------------
-        self.emc2101.force_temperature(21.5)
+        computed = self.emc2101.read_device_registers().keys()
+        expected = sut.DEFAULTS.keys()
         # -----------------------------------------------------------------
-        with BurstHandler(i2c_bus=self.i2c_bus, i2c_adr=self.i2c_adr) as bh:
-            self.assertEqual(bh.read_register(0x0C), 22)
-            self.assertEqual(bh.read_register(0x04A), 0b0110_0000)
-
-    def test_clear_temperature(self):
-        # -----------------------------------------------------------------
-        self.emc2101.force_temperature(21.5)
-        self.emc2101.clear_temperature()
-        # -----------------------------------------------------------------
-        with BurstHandler(i2c_bus=self.i2c_bus, i2c_adr=self.i2c_adr) as bh:
-            self.assertEqual(bh.read_register(0x0C), 0)
-            self.assertEqual(bh.read_register(0x04A), 0b0010_0000)
+        self.assertEqual(computed, expected)
 
     # ---------------------------------------------------------------------
     # usage errors

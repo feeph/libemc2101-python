@@ -27,8 +27,9 @@ def calibrate_pwm_fan(i2c_bus: busio.I2C, model: str, pwm_frequency: int = 22500
     LH.info("Calibrating fan parameters.")
     pwm_d, pwm_f = feeph.emc2101.utilities.calculate_pwm_factors(pwm_frequency=pwm_frequency)
     steps_list = list(range(pwm_f * 2))
-    emc2101 = feeph.emc2101.core.Emc2101_core(i2c_bus=i2c_bus)
-    emc2101.configure_pin_six_as_tacho()
+    # tacho signal on pin 6, device uses PWM control
+    config = feeph.emc2101.core.ConfigRegister(alt_tach=True, dac=False)
+    emc2101 = feeph.emc2101.core.Emc2101(i2c_bus=i2c_bus, config=config)
     emc2101.configure_pwm_control(pwm_d=pwm_d, pwm_f=pwm_f, step_max=max(steps_list))
     # -----------------------------------------------------------------
     LH.debug("Disabling gradual speed rampup.")
