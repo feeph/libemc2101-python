@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/feeph/libemc2101-python/compare/v0.2.2...v0.3.0) (2024-08-25)
+
+
+### Features
+
+* cleanup interface and leverage inheritance ([#51](https://github.com/feeph/libemc2101-python/issues/51)) ([5ae941d](https://github.com/feeph/libemc2101-python/commit/5ae941dd14dcdba4bfffdb8b22c7c926f16aa97f))
+
 ## [0.2.2](https://github.com/feeph/libemc2101-python/compare/v0.2.1...v0.2.2) (2024-08-14)
 
 
