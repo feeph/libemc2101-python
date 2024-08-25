@@ -118,7 +118,11 @@ class Emc2101_PWM(Emc2101):
         elif unit == FanSpeedUnit.RPM:
             if 0 <= value <= self._max_rpm:
                 LH.debug("Converting RPM to internal value.")
-                step = _convert_rpm2step(self._fan_config, value)
+                result = _convert_rpm2step(self._fan_config, value)
+                if result is not None:
+                    step = result
+                else:
+                    return None
             else:
                 raise ValueError(f"provided value {value} is out of range (0 ≤ x ≤ {self._max_rpm}RPM)")
         elif unit == FanSpeedUnit.STEP:
@@ -129,17 +133,14 @@ class Emc2101_PWM(Emc2101):
         else:
             raise ValueError("unsupported value type")
         # apply step
-        if step is not None:
-            self.set_driver_strength(step)
-            # convert applied value back to original unit and return
-            if unit == FanSpeedUnit.PERCENT:
-                return _convert_step2percent(self._fan_config, step)
-            elif unit == FanSpeedUnit.RPM:
-                return _convert_step2rpm(self._fan_config, step)
-            else:
-                return step
+        self.set_driver_strength(step)
+        # convert applied value back to original unit and return
+        if unit == FanSpeedUnit.PERCENT:
+            return _convert_step2percent(self._fan_config, step)
+        elif unit == FanSpeedUnit.RPM:
+            return _convert_step2rpm(self._fan_config, step)
         else:
-            return None
+            return step
 
     def update_lookup_table(self, values: dict[int, int], unit: FanSpeedUnit = FanSpeedUnit.PERCENT) -> bool:
         """
@@ -153,7 +154,11 @@ class Emc2101_PWM(Emc2101):
             if unit == FanSpeedUnit.PERCENT:
                 step = _convert_percent2step(self._fan_config, value)
             elif unit == FanSpeedUnit.RPM:
-                step = _convert_rpm2step(self._fan_config, value)
+                result = _convert_rpm2step(self._fan_config, value)
+                if result is not None:
+                    step = result
+                else:
+                    continue
             elif unit == FanSpeedUnit.STEP:
                 step = value
             else:
@@ -163,7 +168,10 @@ class Emc2101_PWM(Emc2101):
             else:
                 LH.error("Unable to process provided value '%i'! Skipping.", value)
         # -------------------------------------------------------------
-        return super().update_lookup_table(values=lut_table)
+        if lut_table:
+            return super().update_lookup_table(values=lut_table)
+        else:
+            return False
 
 
 def _convert_percent2step(fan_config: FanConfig, percent: int) -> int:
