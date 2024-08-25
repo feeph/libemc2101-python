@@ -13,11 +13,13 @@ from enum import Enum
 
 # module busio provides no type hints
 import busio  # type: ignore
-from feeph.i2c import BurstHandler
+from feeph.i2c import BurstHandle, BurstHandler
 
+from feeph.emc2101.config_register import ConfigRegister, parse_config_register
 from feeph.emc2101.conversions import convert_bytes2temperature, convert_temperature2bytes
+from feeph.emc2101.ets_config import ExternalTemperatureSensorConfig
 
-LH = logging.getLogger(__name__)
+LH = logging.getLogger('feeph.emc2101')
 
 
 DEFAULTS = {
@@ -104,29 +106,27 @@ class SpinUpDuration(Enum):
     TIME_3_20 = 0b0000_0111  # 3.20s (default)
 
 
-class Emc2101_core:
+class Emc2101:
     """
     low-level interface to the EMC2101 chip
 
     You probably don't want to use this one. Use Emc2101_DAC / Emc2101_PWM instead.
     """
 
-    def __init__(self, i2c_bus: busio.I2C):
+    def __init__(self, i2c_bus: busio.I2C, config: ConfigRegister):
         """
         initialize the object
 
-        Configure pin 6 and the control mode before use.
-        These settings MUST match the electric circuit!
-         - emc2101.configure_pin_six_as_alert()
-         - emc2101.configure_pin_six_as_tacho()
-         - emc2101.configure_dac_control()
-         - emc2101.configure_pwm_control()
+        Make sure to configure pin 6 and the control mode before use:
+          - config.alt_tach
+          - config.dac
 
-        If you don't set these values correctly you won't get sensible
-        readings!
+        These settings MUST match the electric circuit!If you don't set
+        these values correctly you won't get sensible readings!
         """
         self._i2c_bus = i2c_bus
         self._i2c_adr = 0x4c  # the I²C bus address is hardcoded
+        self.set_config_register(config)
         # allowed steps can be lower if PWM is used
         self._step_min = 0
         self._step_max = 63
@@ -168,51 +168,28 @@ class Emc2101_core:
     # fan speed control
     # ---------------------------------------------------------------------
 
-    def configure_pin_six_as_alert(self) -> bool:
-        try:
-            # set 0x03.2 to 0
-            with BurstHandler(i2c_bus=self._i2c_bus, i2c_adr=self._i2c_adr) as bh:
-                cfg_register_value = bh.read_register(0x03)
-                bh.write_register(0x03, cfg_register_value & 0b1111_1011)
-                # clear spin up behavior settings
-                # (spin up is unavailable when pin 6 is in alert mode),
-                bh.write_register(0x4B, 0b0000_0000)
-                return True
-        except RuntimeError:
-            LH.error("Unable to read config register!")
-            return False
-
-    def configure_pin_six_as_tacho(self) -> bool:
-        try:
-            # set 0x03.2 to 1
-            with BurstHandler(i2c_bus=self._i2c_bus, i2c_adr=self._i2c_adr) as bh:
-                cfg_register_value = bh.read_register(0x03)
-                bh.write_register(0x03, cfg_register_value | 0b0000_0100)
-                return True
-        except RuntimeError:
-            LH.error("Unable to read config register!")
-            return False
-
-    def configure_dac_control(self, step_max: int):
-        # enable DAC control (set 0x03.4 to 1)
+    def get_config_register(self) -> ConfigRegister:
         with BurstHandler(i2c_bus=self._i2c_bus, i2c_adr=self._i2c_adr) as bh:
-            cfg_register_value = bh.read_register(0x03)
-            bh.write_register(0x03, cfg_register_value | 0b0001_0000)
-            # configure maximum allowed step
-            self._step_max = step_max
+            return _get_config_register(bh)
 
-    def configure_pwm_control(self, pwm_d: int, pwm_f: int, step_max: int):
-        # enable PWM control (set 0x03.4 to 0)
+    def set_config_register(self, config: ConfigRegister):
         with BurstHandler(i2c_bus=self._i2c_bus, i2c_adr=self._i2c_adr) as bh:
-            cfg_register_value = bh.read_register(0x03)
-            bh.write_register(0x03, cfg_register_value & 0b1110_1111)
+            _set_config_register(bh, config)
+
+    def configure_pwm_control(self, pwm_d: int, pwm_f: int, step_max: int) -> bool:
+        with BurstHandler(i2c_bus=self._i2c_bus, i2c_adr=self._i2c_adr) as bh:
+            # enable PWM control
+            if _get_config_register(bh).dac:
+                LH.warning("Unable to use PWM! Device is configured for direct current control.")
+                return False
             # configure pwm frequency divider settings
             bh.write_register(0x4D, pwm_f)
             bh.write_register(0x4E, pwm_d)
             # configure maximum allowed step
             self._step_max = step_max
+            return True
 
-    def configure_spinup_behaviour(self, spinup_strength: SpinUpStrength, spinup_duration: SpinUpDuration, fast_mode: bool):
+    def configure_spinup_behaviour(self, spinup_strength: SpinUpStrength, spinup_duration: SpinUpDuration, fast_mode: bool) -> bool:
         """
         configure the spin-up behavior for the attached fan (duration and
         strength). This helps to ensure the fan has sufficient power
@@ -226,15 +203,23 @@ class Emc2101_core:
 
         Please note: Fast_mode is ignored if pin 6 is in alert mode.
         """
-        value = 0x00
-        # configure spin up time
-        value |= spinup_duration.value
-        # configure spin up strength (dutycycle)
-        value |= spinup_strength.value
-        if fast_mode:
-            value |= 0b0010_0000
         with BurstHandler(i2c_bus=self._i2c_bus, i2c_adr=self._i2c_adr) as bh:
-            bh.write_register(0x4B, value)
+            config = _get_config_register(bh)
+            if config.alt_tach:
+                # pin 6 is configured as tacho pin
+                value = 0x00
+                # configure spin up time
+                value |= spinup_duration.value
+                # configure spin up strength (dutycycle)
+                value |= spinup_strength.value
+                if fast_mode:
+                    value |= 0b0010_0000
+                bh.write_register(0x4B, value)
+                return True
+            else:
+                # pin 6 is configured as alert pin
+                LH.warning("Pin 6 is in alert mode. Can't configure spinup behavior.")
+                return False
 
     def configure_minimum_rpm(self, minimum_rpm: int):
         """
@@ -375,6 +360,12 @@ class Emc2101_core:
         value = min(value, 0b1001)  # all values larger than 0b1001 map to 0b1001
         return [k for k, v in CONVERSIONS_PER_SECOND.items() if v == value][0]
 
+    def get_temperature_conversion_rates(self) -> list[str]:
+        """
+        returns all available temperature conversion rates
+        """
+        return list(CONVERSIONS_PER_SECOND.keys())
+
     def set_temperature_conversion_rate(self, conversion_rate: str) -> bool:
         """
         set the number of temperature conversions per second
@@ -387,25 +378,51 @@ class Emc2101_core:
         else:
             return False
 
-    def get_chip_temperature(self) -> float:
+    # ---------------------------------------------------------------------
+    # temperature measurements - internal temperature sensor
+    # ---------------------------------------------------------------------
+
+    def get_its_temperature(self) -> float:
         """
         get internal sensor temperature in °C
 
-        the datasheet guarantees a precision of +/- 2°C
+        the datasheet guarantees a precision of ±2°C
         """
         with BurstHandler(i2c_bus=self._i2c_bus, i2c_adr=self._i2c_adr) as bh:
-            LH.error("get_chip_temperature(): %0.1f", bh.read_register(0x00))
+            LH.error("get_its_temperature(): %0.1f", bh.read_register(0x00))
             return float(bh.read_register(0x00))
 
-    def get_chip_temperature_limit(self) -> float:
+    def get_its_temperature_limit(self) -> float:
         with BurstHandler(i2c_bus=self._i2c_bus, i2c_adr=self._i2c_adr) as bh:
             return float(bh.read_register(0x05))
 
-    def set_chip_temperature_limit(self, value: float):
+    def set_its_temperature_limit(self, value: float):
         with BurstHandler(i2c_bus=self._i2c_bus, i2c_adr=self._i2c_adr) as bh:
             bh.write_register(0x05, int(value))
 
-    def get_external_sensor_state(self) -> ExternalSensorStatus:
+    # ---------------------------------------------------------------------
+    # temperature measurements - external temperature sensor
+    # ---------------------------------------------------------------------
+
+    def configure_ets(self, ets_config: ExternalTemperatureSensorConfig) -> bool:
+        """
+        configure diode_ideality_factor and beta_compensation_factor of
+        the external temperature sensor
+        """
+        dif = ets_config.diode_ideality_factor
+        bcf = ets_config.beta_compensation_factor
+        with BurstHandler(i2c_bus=self._i2c_bus, i2c_adr=self._i2c_adr) as bh:
+            dev_status = bh.read_register(0x02)
+            if not dev_status & 0b0000_0100:
+                LH.debug("The diode fault bit is clear.")
+                bh.write_register(0x17, dif)
+                bh.write_register(0x18, bcf)
+                return True
+            else:
+                LH.error("The diode fault bit is set: Sensor is faulty or missing.")
+                return False
+
+    def get_ets_state(self) -> ExternalSensorStatus:
         # The status register 0x02 has a diode fault bit but that bit is
         # set only if there is an open circuit between DP-DN.
         # (It is NOT set if there is a short circuit between DP-DN.)
@@ -422,7 +439,7 @@ class Emc2101_core:
             else:
                 raise RuntimeError(f"unexpected external sensor state (msb: 0x{msb:02X} lsb:0x{lsb:02X})")
 
-    def has_external_sensor(self) -> bool:
+    def has_ets(self) -> bool:
         # The EMC2101 has a fault bit in the status register (0x02) but
         # that bit is set only if there is an open circuit between DP-DN
         # or if it's shorted to VDD. The bit is not set if there is a
@@ -431,11 +448,11 @@ class Emc2101_core:
         with BurstHandler(i2c_bus=self._i2c_bus, i2c_adr=self._i2c_adr) as bh:
             return bh.read_register(0x01) != 0b0111_1111
 
-    def get_sensor_temperature(self) -> float:
+    def get_ets_temperature(self) -> float:
         """
         get external sensor temperature in °C
 
-        the datasheet guarantees a precision of +/- 1°C
+        the datasheet guarantees a precision of ±1°C
         """
         with BurstHandler(i2c_bus=self._i2c_bus, i2c_adr=self._i2c_adr) as bh:
             msb = bh.read_register(0x01)  # high byte, must be read first!
@@ -445,7 +462,7 @@ class Emc2101_core:
         else:
             return math.nan
 
-    def get_sensor_low_temperature_limit(self) -> float:
+    def get_ets_low_temperature_limit(self) -> float:
         """
         get upper/lower temperature alerting limit in °C
         """
@@ -454,7 +471,7 @@ class Emc2101_core:
             lsb = bh.read_register(0x14)  # low byte
         return convert_bytes2temperature(msb, lsb)
 
-    def set_sensor_low_temperature_limit(self, value: float) -> float:
+    def set_ets_low_temperature_limit(self, value: float) -> float:
         """
         set upper/lower temperature alerting limit in °C
 
@@ -470,7 +487,7 @@ class Emc2101_core:
         else:
             raise ValueError(f"temperature limit out of range ({self._temp_min} ≤ x ≤ {self._temp_max}°C)")
 
-    def get_sensor_high_temperature_limit(self) -> float:
+    def get_ets_high_temperature_limit(self) -> float:
         """
         get upper/lower temperature alerting limit in °C
         """
@@ -479,7 +496,7 @@ class Emc2101_core:
             lsb = bh.read_register(0x13)  # low byte
         return convert_bytes2temperature(msb, lsb)
 
-    def set_sensor_high_temperature_limit(self, value: float) -> float:
+    def set_ets_high_temperature_limit(self, value: float) -> float:
         """
         set upper/lower temperature alerting limit in °C
 
@@ -555,7 +572,7 @@ class Emc2101_core:
     def read_device_registers(self) -> dict[int, int]:
         registers = {}
         with BurstHandler(i2c_bus=self._i2c_bus, i2c_adr=self._i2c_adr) as bh:
-            for register in DEFAULTS.keys():
+            for register in DEFAULTS:
                 registers[register] = bh.read_register(register)
         return registers
 
@@ -564,25 +581,6 @@ class Emc2101_core:
         with BurstHandler(i2c_bus=self._i2c_bus, i2c_adr=self._i2c_adr) as bh:
             for register, value in DEFAULTS.items():
                 bh.write_register(register, value)
-
-    def configure_external_temperature_sensor(self, dif: int, bcf: int) -> bool:
-        """
-        configure diode_ideality_factor and beta_compensation_factor
-
-        parameters:
-         - dif = diode_ideality_factor
-         - bcf = beta_compensation_factor
-        """
-        with BurstHandler(i2c_bus=self._i2c_bus, i2c_adr=self._i2c_adr) as bh:
-            dev_status = bh.read_register(0x02)
-            if not dev_status & 0b0000_0100:
-                LH.debug("The diode fault bit is clear.")
-                bh.write_register(0x17, dif)
-                bh.write_register(0x18, bcf)
-                return True
-            else:
-                LH.error("The diode fault bit is set: Sensor is faulty or missing.")
-                return False
 
     def _uses_tacho_mode(self) -> bool:
         with BurstHandler(i2c_bus=self._i2c_bus, i2c_adr=self._i2c_adr) as bh:
@@ -615,3 +613,11 @@ def _convert_tach2rpm(msb: int, lsb: int) -> int | None:
         return rpm
     else:
         return None
+
+
+def _get_config_register(bh: BurstHandle) -> ConfigRegister:
+    return parse_config_register(bh.read_register(0x03))
+
+
+def _set_config_register(bh: BurstHandle, config: ConfigRegister):
+    bh.write_register(0x03, config.as_int())

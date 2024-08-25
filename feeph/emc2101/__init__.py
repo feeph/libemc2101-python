@@ -47,6 +47,8 @@ tool-based development support as possible.
 # the following imports are provided for user convenience
 # flake8: noqa: F401
 from feeph.emc2101.calibration import calibrate_pwm_fan
+from feeph.emc2101.config_register import ConfigRegister
 from feeph.emc2101.core import CONVERSIONS_PER_SECOND, DEFAULTS, ExternalSensorStatus, SpinUpDuration, SpinUpStrength
+from feeph.emc2101.ets_config import ExternalTemperatureSensorConfig, ets_2n3904, ets_2n3906
 from feeph.emc2101.fan_configs import FanConfig, RpmControlMode, Steps, export_fan_config, generic_pwm_fan
-from feeph.emc2101.pwm import DeviceConfig, Emc2101_PWM, ExternalTemperatureSensorConfig, FanSpeedUnit, PinSixMode, TemperatureLimitType, emc2101_default_config, ets_2n3904, ets_2n3906
+from feeph.emc2101.pwm import DeviceConfig, Emc2101_PWM, FanSpeedUnit, PinSixMode, emc2101_default_config
