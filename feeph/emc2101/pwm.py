@@ -76,16 +76,18 @@ class Emc2101_PWM(Emc2101):
         elif fan_config.rpm_control_mode == RpmControlMode.PWM:
             # emc2101: PWM, fan: PWM -> works
             LH.info("EMC2101 and connected fan both use PWM to control fan speed. Good.")
-            from feeph.emc2101.scs import PWM
-            scs = PWM(fan_config=fan_config)
             pwm_d, pwm_f = feeph.emc2101.utilities.calculate_pwm_factors(pwm_frequency=fan_config.pwm_frequency)
-            self.configure_pwm_control(pwm_d=pwm_d, pwm_f=pwm_f, step_max=max(scs.get_steps()))
+            if fan_config.steps:
+                steps = list(fan_config.steps.keys())
+                self.configure_pwm_control(pwm_d=pwm_d, pwm_f=pwm_f, step_max=max(steps))
+            else:
+                raise ValueError("fan config must have at least 1 step")
         else:
             raise ValueError("fan has unsupported rpm control mode")
         # configure external temperature sensor
         self.configure_ets(ets_config)
         # -- all good: set internal state --
-        self._scs = scs
+        self._fan_config = fan_config
 
     # ---------------------------------------------------------------------
     # fan speed control
@@ -94,9 +96,9 @@ class Emc2101_PWM(Emc2101):
     def get_fixed_speed(self, unit: FanSpeedUnit = FanSpeedUnit.PERCENT) -> int | None:
         step = self.get_driver_strength()
         if unit == FanSpeedUnit.PERCENT:
-            return self._scs.convert_step2percent(step)
+            return _convert_step2percent(self._fan_config, step)
         elif unit == FanSpeedUnit.RPM:
-            return self._scs.convert_step2rpm(step)
+            return _convert_step2rpm(self._fan_config, step)
         else:
             return step
 
@@ -110,45 +112,34 @@ class Emc2101_PWM(Emc2101):
         if unit == FanSpeedUnit.PERCENT:
             if 0 <= value <= 100:
                 LH.debug("Converting percentage to internal value.")
-                result = self._scs.convert_percent2step(value)
-                if result is not None:
-                    step = result
-                else:
-                    LH.error("Unable to process provided percentage value '%i'!", value)
-                    # read current value and return ()
-                    step_cur = self.get_driver_strength()
-                    return self._scs.convert_step2percent(step_cur)
+                step = _convert_percent2step(self._fan_config, value)
             else:
                 raise ValueError(f"provided value {value} is out of range (0 ≤ x ≤ 100%)")
         elif unit == FanSpeedUnit.RPM:
             if 0 <= value <= self._max_rpm:
                 LH.debug("Converting RPM to internal value.")
-                result = self._scs.convert_rpm2step(value)
-                if result is not None:
-                    step = result
-                else:
-                    LH.error("Unable to process provided RPM value '%i'!", value)
-                    # read current value and return ()
-                    step_cur = self.get_driver_strength()
-                    return self._scs.convert_step2rpm(step_cur)
+                step = _convert_rpm2step(self._fan_config, value)
             else:
                 raise ValueError(f"provided value {value} is out of range (0 ≤ x ≤ {self._max_rpm}RPM)")
         elif unit == FanSpeedUnit.STEP:
-            if self._scs.is_valid_step(value):
+            if _is_valid_step(self._fan_config, value):
                 step = value
             else:
                 raise ValueError(f"provided value {value} is not a valid step")
         else:
             raise ValueError("unsupported value type")
         # apply step
-        self.set_driver_strength(step)
-        # convert applied value back to original unit and return
-        if unit == FanSpeedUnit.PERCENT:
-            return self._scs.convert_step2percent(step)
-        elif unit == FanSpeedUnit.RPM:
-            return self._scs.convert_step2rpm(step)
+        if step is not None:
+            self.set_driver_strength(step)
+            # convert applied value back to original unit and return
+            if unit == FanSpeedUnit.PERCENT:
+                return _convert_step2percent(self._fan_config, step)
+            elif unit == FanSpeedUnit.RPM:
+                return _convert_step2rpm(self._fan_config, step)
+            else:
+                return step
         else:
-            return step
+            return None
 
     def update_lookup_table(self, values: dict[int, int], unit: FanSpeedUnit = FanSpeedUnit.PERCENT) -> bool:
         """
@@ -160,16 +151,61 @@ class Emc2101_PWM(Emc2101):
         lut_table = {}
         for temp, value in values.items():
             if unit == FanSpeedUnit.PERCENT:
-                step = self._scs.convert_percent2step(value)
+                step = _convert_percent2step(self._fan_config, value)
             elif unit == FanSpeedUnit.RPM:
-                step = self._scs.convert_rpm2step(value)
+                step = _convert_rpm2step(self._fan_config, value)
             elif unit == FanSpeedUnit.STEP:
                 step = value
             else:
                 raise ValueError("unknown value type")
-            if step is not None:
+            if step in self._fan_config.steps:
                 lut_table[temp] = step
             else:
                 LH.error("Unable to process provided value '%i'! Skipping.", value)
         # -------------------------------------------------------------
         return super().update_lookup_table(values=lut_table)
+
+
+def _convert_percent2step(fan_config: FanConfig, percent: int) -> int:
+    """
+    find the closest step for the provided value
+    """
+    step_cur = 0  # start value is irrelevant
+    deviation_cur = None
+    for step_new, (percent_step, _) in fan_config.steps.items():
+        if percent_step == 0:
+            percent_step = 1
+        deviation_new = abs(1 - percent / percent_step)
+        if deviation_cur is None or deviation_new < deviation_cur:
+            step_cur = step_new
+            deviation_cur = deviation_new
+    return step_cur
+
+
+def _convert_rpm2step(fan_config: FanConfig, rpm: int) -> int | None:
+    """
+    find the closest step for the provided value
+    """
+    step_cur = None
+    deviation_cur = None
+    for step_new, (_, rpm_step) in fan_config.steps.items():
+        if rpm_step is not None:
+            if rpm_step == 0:
+                rpm_step = 1
+            deviation_new = abs(1 - rpm / rpm_step)
+            if deviation_cur is None or deviation_new < deviation_cur:
+                step_cur = step_new
+                deviation_cur = deviation_new
+    return step_cur
+
+
+def _convert_step2percent(fan_config: FanConfig, step: int) -> int:
+    return fan_config.steps[step][0]
+
+
+def _convert_step2rpm(fan_config: FanConfig, step: int) -> int | None:
+    return fan_config.steps[step][1]
+
+
+def _is_valid_step(fan_config: FanConfig, value: int) -> bool:
+    return value in fan_config.steps.keys()
