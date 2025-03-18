@@ -32,7 +32,7 @@ jobs:
       - name: checkout repository
         uses: actions/checkout@v4
       - name: identify changed files
-        uses: tj-actions/changed-files@v44
+        uses: tj-actions/changed-files@v46
         id: changed-files
         with:
           files_yaml: |
